@@ -1,9 +1,32 @@
-jumplink.cms.controller('AppController', function($rootScope, $scope, $state, $window, $timeout, Fullscreen, toaster, $sailsSocket, $location, $anchorScroll, $log) {
+jumplink.cms.controller('AppController', function($rootScope, $scope, $state, $window, $timeout, Fullscreen, $sailsSocket, $location, $anchorScroll, $mdUtil, $log, $mdSidenav) {
 
   // fix scroll to top on route change
-  $scope.$on("$stateChangeSuccess", function () {
+/*  $scope.$on("$stateChangeSuccess", function () {
     $anchorScroll();
-  });
+  });*/
+
+  /**
+   * Build handler to open/close a SideNav; when animation finishes
+   * report completion in console
+   */
+  function buildToggler(navID) {
+    var debounceFn =  $mdUtil.debounce(function(){
+          $mdSidenav(navID)
+            .toggle()
+            .then(function () {
+              $log.debug("toggle " + navID + " is done");
+            });
+        },300);
+    return debounceFn;
+  }
+
+  $scope.toggleLeft = buildToggler('left');
+  $scope.toggleRight = buildToggler('right');
+
+  // WORKAROUND wait until image is loaded to fix bs-sidebar
+/*  angular.element($window).imagesLoaded(function() {
+    angular.element($window).triggerHandler('resize');
+  });*/
 
   //AngularJS Toaster - AngularJS Toaster is a customized version of "toastr" non-blocking notification javascript library: https://github.com/jirikavi/AngularJS-Toaster
   $rootScope.pop = function(type, title, body, timeout, bodyOutputType, clickHandler) {
@@ -120,7 +143,7 @@ jumplink.cms.controller('AppController', function($rootScope, $scope, $state, $w
   });
 
   $rootScope.getWindowDimensions = function () {
-    return { 'height': angular.element($window).height(), 'width': angular.element($window).width() };
+    return { 'height': angular.element($window).height, 'width': angular.element($window).width };
   };
 
   angular.element($window).bind('resize', function () {
@@ -167,21 +190,6 @@ jumplink.cms.controller('AppController', function($rootScope, $scope, $state, $w
     });
   }
 
-  $scope.adminSettingDropdown = [
-    {
-      "text": "<i class=\"fa fa-list\"></i>&nbsp;Übersicht",
-      "click": "goToState('bootstrap-layout.administration')"
-    },
-    {
-      "text": "<i class=\"fa fa-users\"></i>&nbsp;Benutzer",
-      "click": "goToState('bootstrap-layout.users')"
-    },
-    {
-      "text": "<i class=\"fa fa-sign-out\"></i>&nbsp;Abmelden",
-      "click": "$root.logout()"
-    }
-  ];
-
   $scope.goToState = function (to, params, options) {
     $state.go(to, params, options)
   }
@@ -193,8 +201,23 @@ jumplink.cms.controller('LayoutController', function($scope) {
 
 });
 
-jumplink.cms.controller('ToolbarController', function($scope) {
+jumplink.cms.controller('LeftSidenavController', function($scope, $mdSidenav, $log) {
+  $scope.close = function () {
+    $mdSidenav('left').close()
+      .then(function () {
+        $log.debug("close LEFT is done");
+      });
+  };
 
+});
+
+jumplink.cms.controller('RightSidenavController', function($scope, $mdSidenav, $log) {
+  $scope.close = function () {
+    $mdSidenav('right').close()
+      .then(function () {
+        $log.debug("close RIGHT is done");
+      });
+  };
 
 });
 
@@ -206,11 +229,6 @@ jumplink.cms.controller('HomeContentController', function($scope, $sailsSocket, 
 
   $scope.about = about;
   $scope.goals = goals;
-
-  // WORKAROUND wait until image is loaded to fix bs-sidebar
-  angular.element($window).imagesLoaded(function() {
-    angular.element($window).triggerHandler('resize');
-  });
 
   $scope.goTo = function (hash) {
     $location.hash(hash);
