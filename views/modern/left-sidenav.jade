@@ -28,12 +28,12 @@
 //-         i.fa.fa-compress(ng-show="isFullscreen", title="Vollbild verlassen")
 md-sidenav.md-sidenav-left.md-whiteframe-z2(md-component-id='left', md-is-locked-open="$mdMedia('gt-md')")
   md-toolbar.md-theme-indigo
-    h1.md-toolbar-tools Sidenav Left
-  |       
-  md-content(layout-padding='')
-    md-button.md-primary(ng-click='close()', hide-gt-md='')
-      | Close Sidenav Left
-    |         
+    .md-toolbar-tools
+      h2 Sidenav Left
+      span(flex='')
+      md-button.md-icon-button(aria-label='Close', ng-click='close()', hide-gt-md='')
+        ng-md-icon(icon='close', style='fill: white;', size="28")  
+  md-content(layout-padding='')   
     p(hide-md='', show-gt-md='')
       | This sidenav is locked open on your device. To go back to the default behavior,
       | narrow your display.

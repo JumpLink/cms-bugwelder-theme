@@ -1,13 +1,14 @@
 md-sidenav.md-sidenav-right.md-whiteframe-z2(md-component-id='right')
   md-toolbar.md-theme-light
-    h1.md-toolbar-tools Sidenav Right
-  |       
+    .md-toolbar-tools
+      md-button.md-icon-button(aria-label='Close', ng-click='close()')
+        ng-md-icon(icon='close', style='fill: white;', size="28") 
+      span(flex='') 
+      h2 Sidenav Right  
   md-content(layout-padding='')
     form
       md-input-container
-        label(for='testInput') Test input
-        |             
-        input#testInput(type='text', ng-model='data', md-sidenav-focus='')
-    |         
+        label(for='testInput') Test input     
+        input#testInput(type='text', ng-model='data', md-sidenav-focus='')   
     md-button.md-primary(ng-click='close()')
       | Close Sidenav Right
