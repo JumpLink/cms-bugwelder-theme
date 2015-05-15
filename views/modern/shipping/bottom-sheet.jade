@@ -1,0 +1,20 @@
+md-bottom-sheet.md-list
+  md-toolbar
+    .md-toolbar-tools
+      | {{product.sku}}
+  md-content
+    md-input-container
+      label Heritage Menge
+      input(ng-model='product.stock_vwheritage_qty', type='number')
+    md-input-container
+      label Strichweg Menge
+      input(ng-model='product.stock_strichweg_qty', type='number')
+    md-input-container
+      label Gesamtmenge
+      input(ng-model='product.qty', type='number')
+    md-input-container
+      label Strichweg Range
+      input(ng-model='product.stock_strichweg_range', type='text')
+    md-input-container
+      label Strichweg Row
+      input(ng-model='product.stock_strichweg_row', type='text')

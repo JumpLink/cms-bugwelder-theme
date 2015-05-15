@@ -30,7 +30,8 @@ jumplink.cms.controller('AppController', function($rootScope, $scope, $state, $w
 
   //AngularJS Toaster - AngularJS Toaster is a customized version of "toastr" non-blocking notification javascript library: https://github.com/jirikavi/AngularJS-Toaster
   $rootScope.pop = function(type, title, body, timeout, bodyOutputType, clickHandler) {
-    toaster.pop(type, title, body, timeout, bodyOutputType, clickHandler);
+    // toaster.pop(type, title, body, timeout, bodyOutputType, clickHandler);
+    console.log("toaster", type, title, body, timeout, bodyOutputType, clickHandler);
   };
 
   var generalSubscribes = function () {
@@ -225,60 +226,110 @@ jumplink.cms.controller('FooterController', function($scope) {
 
 });
 
-jumplink.cms.controller('ShippingContentController', function($scope, $sailsSocket, $location, $anchorScroll, $timeout, $window, about, goals, $log) {
+jumplink.cms.controller('ShippingProductController', function(product, $scope, $mdBottomSheet, $sailsSocket, $log) {
 
-  $scope.about = about;
-  $scope.goals = goals;
+  $scope.product = product;
+  // console.log($scope);
 
-  $scope.goTo = function (hash) {
-    $location.hash(hash);
-    $anchorScroll();
+  $scope.hide = function() {
+    $mdBottomSheet.hide("TODO");
+  };
+
+  var loadInfo  = function (cb) {
+    // $log.debug(product);
+    $sailsSocket.get('/magento/findinfo/'+$scope.product.product_id+"?id="+$scope.product.product_id+"&storeview=shop_de", {storeview: "shop_de", id:$scope.product.id}).success(function(data, status, headers, config) {
+      if(data != null && typeof(data) !== "undefined") {
+        // $log.debug (data);
+        if(data.images) data.images = $scope.product.images;
+        $scope.product = data;
+        $scope.product.stock_strichweg_qty = Number($scope.product.stock_strichweg_qty);
+        $scope.product.stock_vwheritage_qty = Number($scope.product.stock_vwheritage_qty);
+        $scope.product.qty = $scope.product.stock_strichweg_qty + $scope.product.stock_vwheritage_qty;
+        $log.debug ($scope.product);
+        if(cb) cb(null, data);
+      } else {
+        $log.error ("Error");
+        if(cb) cb("Error")
+      }
+    }).error(function (data, status, headers, config) {
+      $log.error(data, status, headers, config);
+      if(cb) cb(data);
+    });
   }
 
-  $scope.toogleHtml = function() {
-    $scope.html = !$scope.html;
-  }
+  loadInfo();
 
-  $scope.save = function() {
-    $sailsSocket.put('/content/replace', {name: 'about', content: $scope.about}).success(function(data, status, headers, config) {
+});
+
+jumplink.cms.controller('ShippingContentController', function($scope, $sailsSocket, $mdBottomSheet, $async, $log) {
+
+  $scope.search = "";
+  $scope.products = [];
+
+  var loadImage  = function (product, cb) {
+    $log.debug(product);
+    $sailsSocket.get('/magento/findimage/'+product.product_id+"?id="+product.product_id+"&storeview=shop_de", {storeview: "shop_de", id:product.id}).success(function(data, status, headers, config) {
       if(data != null && typeof(data) !== "undefined") {
         $log.debug (data);
+        // $scope.products = data;
+        product.images = data;
+        $log.debug (product);
+        cb(null, data);
       } else {
-        $log.debug ("Can't save site");
+        $log.error ("Error");
+        cb("Error")
       }
-    });
-
-    $sailsSocket.put('/content/replace', {name: 'goals', content: $scope.goals}).success(function(data, status, headers, config) {
-      if(data != null && typeof(data) !== "undefined") {
-        $log.debug (data);
-      } else {
-        $log.debug ("Can't save site");
-      }
+    }).error(function (data, status, headers, config) {
+      $log.error(data, status, headers, config);
+      cb(data)
     });
   }
 
-  // called on content changes
-  $sailsSocket.subscribe('content', function(msg){
-    $log.debug(msg);
-    switch(msg.verb) {
-      case 'updated':
-        switch(msg.id) {
-          case 'about':
-            $scope.about = msg.data.content;;
-            if($rootScope.authenticated) {
-              $rootScope.pop('success', '"Wir über uns" wurde aktualisiert', "");
-            }
-          break;
-          case 'goals':
-            $scope.goals = msg.data.content;;
-            if($rootScope.authenticated) {
-              $rootScope.pop('success', '"Ziele" wurde aktualisiert', "");
-            }
-          break;
+  var loadImages  = function (products, cb) {
+    $async.map(products, loadImage, function(err, results) {
+      if(err) $log.error ("Can't save image");
+      $log.debug (results);
+    });
+  }
+
+  var loadSkus = function (sku, cb) {
+    $log.debug(event, $scope.search);
+    if(event.keyIdentifier === "Enter") {
+      $sailsSocket.get('/magento/find/'+sku+"?storeview=shop_de", {storeview: "shop_de", id:sku}).success(function(data, status, headers, config) {
+        if(data != null && typeof(data) !== "undefined") {
+          $log.debug (data);
+          $scope.products = data;
+          loadImages($scope.products);
+        } else {
+          $log.error ("Can't save image");
         }
-      break;
+      }).error(function (data, status, headers, config) {
+        $log.error(data, status, headers, config);
+      });
     }
-  });
+  }
+
+  $scope.checkInput = function (event) {
+    $log.debug(event, $scope.search);
+    if(event.keyIdentifier === "Enter") {
+      loadSkus($scope.search);
+    }
+  }
+
+  $scope.showProduct = function (product, $event) {
+    $scope.product = product;
+    $mdBottomSheet.show({
+      templateUrl: 'shipping/bottom-sheet',
+      controller: 'ShippingProductController',
+      targetEvent: $event,
+      // scope: $scope,
+      locals: {product: $scope.product}
+    }).then(function(parameter) {
+      console.log(parameter);
+    }, function (error) {
+      console.log(error);
+    });
+  }
 
 });
 

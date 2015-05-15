@@ -40,7 +40,7 @@ if (typeof jumplink === 'undefined') {
   var jumplink = {};
 }
 
-// Sourde: https://github.com/darius/requestAnimationFrame
+// Source: https://github.com/darius/requestAnimationFrame
 // Adapted from https://gist.github.com/paulirish/1579671 which derived from
 // http://paulirish.com/2011/requestanimationframe-for-smart-animating/
 // http://my.opera.com/emoller/blog/2011/12/20/requestanimationframe-for-smart-er-animating
@@ -116,24 +116,24 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
   // shipping
   .state('layout.shipping', {
     url: '/shipping'
-    , resolve:{
-      about: function($sailsSocket) {
-        return $sailsSocket.get('/content?name=about', {name: 'about'}).then (function (data) {
-          if(angular.isUndefined(data) || angular.isUndefined(data.data[0]))
-            return null;
-          else
-            return html_beautify(data.data[0].content);
-        });
-      }
-      , goals: function($sailsSocket, $timeout) {
-        return $sailsSocket.get('/content?name=goals', {name: 'goals'}).then (function (data) {
-          if(angular.isUndefined(data) || angular.isUndefined(data.data[0]))
-            return null;
-          else
-            return html_beautify(data.data[0].content);
-        });
-      }
-    }
+    // , resolve:{
+    //   about: function($sailsSocket) {
+    //     return $sailsSocket.get('/content?name=about', {name: 'about'}).then (function (data) {
+    //       if(angular.isUndefined(data) || angular.isUndefined(data.data[0]))
+    //         return null;
+    //       else
+    //         return html_beautify(data.data[0].content);
+    //     });
+    //   }
+    //   , goals: function($sailsSocket, $timeout) {
+    //     return $sailsSocket.get('/content?name=goals', {name: 'goals'}).then (function (data) {
+    //       if(angular.isUndefined(data) || angular.isUndefined(data.data[0]))
+    //         return null;
+    //       else
+    //         return html_beautify(data.data[0].content);
+    //     });
+    //   }
+    // }
     , views: {
       'content' : {
         templateUrl: 'shipping/content'
@@ -186,6 +186,8 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
         return $sailsSocket.get('/gallery/'+$stateParams.id).then (function (data) {
           $log.debug('/gallery/'+$stateParams.id, data);
           return data.data;
+        }, function error (resp){
+          log.error(resp);
         });
       }
     }

@@ -34,7 +34,7 @@
 // Ace
 .ace_editor { height: 300px; }
 
-// angular material icons
+// angular material icons TODO use angular material style and extend 
 .md-icon-button {
   ng-md-icon {
     display: flex;
@@ -60,4 +60,19 @@ md-list-item>ng-md-icon:first-child {
   margin-top: 16px;
   margin-bottom: 12px;
   box-sizing: content-box;
+}
+
+md-input-container.md-icon-float>ng-md-icon {
+  top: 26px;
+  left: 2px;
+}
+
+md-input-container>ng-md-icon {
+  position: absolute;
+  top: 5px;
+  left: 2px;
+}
+
+md-input-container.md-icon-float>ng-md-icon+input {
+  margin-left: 36px;
 }

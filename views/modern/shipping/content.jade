@@ -20,7 +20,7 @@
 md-toolbar
   .md-toolbar-tools
     md-button.md-icon-button(aria-label='Settings', ng-click='toggleLeft()', hide-gt-md='')
-      ng-md-icon(icon='menu', size="28", style='fill: white;')    
+      ng-md-icon(icon='menu', size="28", style='fill: white;')
     h2
       span Toolbar with Icon Buttons         
     span(flex='')  
@@ -31,10 +31,20 @@ md-toolbar
       ng-md-icon(icon="more_vert", size="28", style='fill: white;')
 md-tabs(md-dynamic-height='', md-border-bottom='')
   md-tab(label='Alle')
-    md-content.md-padding
-      h1.md-display-2 Alle    
-      p
-        | Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla venenatis ante augue. Phasellus volutpat neque ac dui mattis vulputate. Etiam consequat aliquam cursus. In sodales pretium ultrices. Maecenas lectus est, sollicitudin consectetur felis nec, feugiat ultricies mi.
+    md-content.md-padding(layout-padding='', layout='row', layout-sm='column')
+      md-input-container.md-icon-float
+        label Suche
+        ng-md-icon(icon='search', size="28")
+        input(ng-keyup="checkInput($event)", type="text", ng-model='search')
+    md-content.md-padding(layout-padding='', layout='row', layout-sm='column')
+      md-list
+        md-list-item.md-2-line(ng-repeat="product in products", ng-click="showProduct(product, $event)")
+          // button.md-no-style.md-button.md-default-theme
+            .md-list-item-inner
+          img.md-avatar(ng-src='{{product.images[0].url}}', alt='{{todos[0].who}}')
+          .md-list-item-text
+            h3 {{product.sku}}
+            p {{ product.name }}
   md-tab(label='Kategorie 1')
     md-content.md-padding
       h1.md-display-2 Kategorie1   
@@ -45,8 +55,8 @@ md-tabs(md-dynamic-height='', md-border-bottom='')
       p
         | Integer turpis erat, porttitor vitae mi faucibus, laoreet interdum tellus. Curabitur posuere molestie dictum. Morbi eget congue risus, quis rhoncus quam. Suspendisse vitae hendrerit erat, at posuere mi. Cras eu fermentum nunc. Sed id ante eu orci commodo volutpat non ac est. Praesent ligula diam, congue eu enim scelerisque, finibus commodo lectus. 
   md-tab(label='Kategorie 2')
-    md-content.md-padding
+    md-content
       h1.md-display-2 Kategorie2
       p
-        | Integer turpis erat, porttitor vitae mi faucibus,         
+        | Integer turpis erat, porttitor vitae mi faucibus
 div(flex='')
