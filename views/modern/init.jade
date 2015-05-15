@@ -2,7 +2,7 @@ doctype html
 html(lang="en", ng-app="jumplink.cms", ng-controller="AppController", ng-init="$root.authenticated = #{authenticated}; $root.user = #{user}")
   head
     //- base(href="/")
-    title Bootstrap Theme
+    title Bugwelder Sails
 
     //- Viewport mobile tag for sensible mobile support
     meta(name="viewport",content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no")
@@ -27,7 +27,7 @@ html(lang="en", ng-app="jumplink.cms", ng-controller="AppController", ng-init="$
     script(type="text/ng-template", id="dropdown"): include ./dropdown.jade
     script(type="text/ng-template", id="select"): include ./select.jade
     //- home
-    script(type="text/ng-template", id="home/content"): include ./home/content.jade
+    script(type="text/ng-template", id="shipping/content"): include ./shipping/content.jade
     //- gallery
     script(type="text/ng-template", id="gallery/content"): include ./gallery/content.jade
     script(type="text/ng-template", id="gallery/fullscreen"): include ./gallery/fullscreen.jade

@@ -104,18 +104,18 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
   // use the HTML5 History API
   $locationProvider.html5Mode(false);
 
-  $urlRouterProvider.otherwise('/home');
+  $urlRouterProvider.otherwise('/shipping');
 
   $stateProvider
   // LAYOUT
-  .state('bootstrap-layout', {
+  .state('layout', {
     abstract: true
     , templateUrl: "layout"
     , controller: 'LayoutController'
   })
-  // HOME
-  .state('bootstrap-layout.home', {
-    url: '/home'
+  // shipping
+  .state('layout.shipping', {
+    url: '/shipping'
     , resolve:{
       about: function($sailsSocket) {
         return $sailsSocket.get('/content?name=about', {name: 'about'}).then (function (data) {
@@ -136,8 +136,8 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
     }
     , views: {
       'content' : {
-        templateUrl: 'home/content'
-        , controller: 'HomeContentController'
+        templateUrl: 'shipping/content'
+        , controller: 'ShippingContentController'
       }
       , 'left-sidenav' : {
         templateUrl: 'left-sidenav'
@@ -154,7 +154,7 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
     }
   })
   // gallery
-  .state('bootstrap-layout.gallery', {
+  .state('layout.gallery', {
     url: '/gallery'
     , resolve:{
       images: function($sailsSocket) {
@@ -178,7 +178,7 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
       }
     }
   })
-  .state('bootstrap-layout.gallery-fullscreen', {
+  .state('layout.gallery-fullscreen', {
     url: '/gallery/fs/:id'
     , resolve:{
       image: function($sailsSocket, $stateParams, $log) {
@@ -205,7 +205,7 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
     }
   })
   // gallery slideshow
-  .state('bootstrap-layout.gallery-slider', {
+  .state('layout.gallery-slider', {
     url: '/slider/:slideIndex'
     , resolve:{
       images: function($sailsSocket) {
@@ -226,7 +226,7 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
     }
   })
   // events timeline
-  .state('bootstrap-layout.timeline', {
+  .state('layout.timeline', {
     url: '/events'
     , resolve:{
       events: function($sailsSocket, eventService) {
@@ -251,7 +251,7 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
     }
   })
   // members
-  .state('bootstrap-layout.members', {
+  .state('layout.members', {
     url: '/members'
     , resolve:{
       members: function($sailsSocket, $filter) {
@@ -279,7 +279,7 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
     }
   })
   // application
-  .state('bootstrap-layout.application', {
+  .state('layout.application', {
     url: '/application'
     , resolve:{
       application: function($sailsSocket) {
@@ -307,7 +307,7 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
     }
   })
   // imprint
-  .state('bootstrap-layout.imprint', {
+  .state('layout.imprint', {
     url: '/imprint'
     , resolve:{
       imprint: function($sailsSocket) {
@@ -335,7 +335,7 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
     }
   })
   // links
-  .state('bootstrap-layout.links', {
+  .state('layout.links', {
     url: '/links'
     , resolve:{
       links: function($sailsSocket) {
@@ -363,7 +363,7 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
     }
   })
   // administration
-  .state('bootstrap-layout.administration', {
+  .state('layout.administration', {
     url: '/admin'
     , resolve:{
       themeSettings: function($sailsSocket) {
@@ -384,7 +384,7 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
       }
     }
   })
-  .state('bootstrap-layout.users', {
+  .state('layout.users', {
     url: '/users'
     , resolve:{
       users: function($sailsSocket) {
@@ -404,7 +404,7 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
       }
     }
   })
-  .state('bootstrap-layout.user', {
+  .state('layout.user', {
     url: '/user/:index'
     , resolve:{
       user: function($sailsSocket, $stateParams) {
@@ -425,7 +425,7 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
       }
     }
   })
-  .state('bootstrap-layout.new-user', {
+  .state('layout.new-user', {
     url: '/new/user'
     , views: {
       'content' : {

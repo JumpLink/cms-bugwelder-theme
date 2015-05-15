@@ -127,13 +127,13 @@ jumplink.cms.controller('AppController', function($rootScope, $scope, $state, $w
   function(event, toState, toParams, fromState, fromParams){
     $rootScope.loadclass = 'finish';
     switch(toState.name) {
-      case "bootstrap-layout.home":
-        $rootScope.bodyclass = 'home';
+      case "layout.shipping":
+        $rootScope.bodyclass = 'shipping';
       break;
-      case "bootstrap-layout.gallery":
+      case "layout.gallery":
         $rootScope.bodyclass = 'gallery';
       break;
-      case "bootstrap-layout.gallery-slider":
+      case "layout.gallery-slider":
         $rootScope.bodyclass = 'gallery-slider';
       break;
       default:
@@ -225,7 +225,7 @@ jumplink.cms.controller('FooterController', function($scope) {
 
 });
 
-jumplink.cms.controller('HomeContentController', function($scope, $sailsSocket, $location, $anchorScroll, $timeout, $window, about, goals, $log) {
+jumplink.cms.controller('ShippingContentController', function($scope, $sailsSocket, $location, $anchorScroll, $timeout, $window, about, goals, $log) {
 
   $scope.about = about;
   $scope.goals = goals;
@@ -869,7 +869,7 @@ jumplink.cms.controller('UserController', function($scope, userService, user, $s
       user = $scope.user;
     userService.save(user, function(data) {
       // $scope.user = data;
-      $state.go('bootstrap-layout.users');
+      $state.go('layout.users');
     });
   }
 
@@ -883,7 +883,7 @@ jumplink.cms.controller('UserNewController', function($scope, userService, $stat
       user = $scope.user;
     userService.save(user, function(data) {
       // $scope.user = data;
-      $state.go('bootstrap-layout.users');
+      $state.go('layout.users');
     });
   }
 
