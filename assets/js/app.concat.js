@@ -89790,7 +89790,7 @@ jumplink.cms.controller('FooterController', function($scope) {
 
 });
 
-jumplink.cms.controller('ShippingProductController', function(product, $scope, $mdBottomSheet, $sailsSocket, $log) {
+jumplink.cms.controller('ShippingProductController', function($rootScope, product, $scope, $mdBottomSheet, $sailsSocket, $log) {
 
   $scope.product = product;
   // console.log($scope);
@@ -89799,9 +89799,27 @@ jumplink.cms.controller('ShippingProductController', function(product, $scope, $
     $mdBottomSheet.hide("TODO");
   };
 
+  var loadStock  = function (cb) {
+    // $log.debug(product);
+    $sailsSocket.get('/magento/catalog_product_stock_list/'+$scope.product.product_id+"?id="+$scope.product.product_id+"&storeview=shop_de&site="+$rootScope.site, {storeview: "shop_de", id:$scope.product.id, site:$rootScope.site}).success(function(data, status, headers, config) {
+      if(data != null && typeof(data) !== "undefined") {
+        // $log.debug ("stock", data);
+        $scope.qty = data[0].qty;
+        $scope.is_in_stock = data[0].is_in_stock;
+        if(cb) cb(null, data);
+      } else {
+        $log.error ("Error");
+        if(cb) cb("Error")
+      }
+    }).error(function (data, status, headers, config) {
+      $log.error(data, status, headers, config);
+      if(cb) cb(data);
+    });
+  }
+
   var loadInfo  = function (cb) {
     // $log.debug(product);
-    $sailsSocket.get('/magento/findinfo/'+$scope.product.product_id+"?id="+$scope.product.product_id+"&storeview=shop_de", {storeview: "shop_de", id:$scope.product.id}).success(function(data, status, headers, config) {
+    $sailsSocket.get('/magento/findinfo/'+$scope.product.product_id+"?id="+$scope.product.product_id+"&storeview=shop_de&site="+$rootScope.site, {storeview: "shop_de", id:$scope.product.id, site:$rootScope.site}).success(function(data, status, headers, config) {
       if(data != null && typeof(data) !== "undefined") {
         // $log.debug (data);
         if(data.images) data.images = $scope.product.images;
@@ -89821,18 +89839,36 @@ jumplink.cms.controller('ShippingProductController', function(product, $scope, $
     });
   }
 
-  loadInfo();
+  loadInfo(function (err, res) {
+    loadStock(function(err, res) {
+
+    });
+  });
+  
+
+  $scope.$watch('product.stock_vwheritage_qty', function(newValue, oldValue) {
+    $scope.product.qty = $scope.product.stock_vwheritage_qty + $scope.product.stock_strichweg_qty;
+  });
+
+  $scope.$watch('product.stock_strichweg_qty', function(newValue, oldValue) {
+    $scope.product.qty = $scope.product.stock_vwheritage_qty + $scope.product.stock_strichweg_qty;
+  });
+
+  $scope.$watch('product.qty', function(newValue, oldValue) {
+    if(newValue > 0) $scope.product.is_in_stock = true;
+    else $scope.product.is_in_stock = false;
+  });
 
 });
 
-jumplink.cms.controller('ShippingContentController', function($scope, $sailsSocket, $mdBottomSheet, $async, $log) {
+jumplink.cms.controller('ShippingContentController', function($rootScope, $scope, $sailsSocket, $mdBottomSheet, $async, $log) {
 
   $scope.search = "";
   $scope.products = [];
 
   var loadImage  = function (product, cb) {
     $log.debug(product);
-    $sailsSocket.get('/magento/findimage/'+product.product_id+"?id="+product.product_id+"&storeview=shop_de", {storeview: "shop_de", id:product.id}).success(function(data, status, headers, config) {
+    $sailsSocket.get('/magento/findimage/'+product.product_id+"?id="+product.product_id+"&storeview=shop_de&site="+$rootScope.site, {storeview: "shop_de", id:product.id, site:$rootScope.site}).success(function(data, status, headers, config) {
       if(data != null && typeof(data) !== "undefined") {
         $log.debug (data);
         // $scope.products = data;
@@ -89859,7 +89895,7 @@ jumplink.cms.controller('ShippingContentController', function($scope, $sailsSock
   var loadSkus = function (sku, cb) {
     $log.debug(event, $scope.search);
     if(event.keyIdentifier === "Enter") {
-      $sailsSocket.get('/magento/find/'+sku+"?storeview=shop_de", {storeview: "shop_de", id:sku}).success(function(data, status, headers, config) {
+      $sailsSocket.get('/magento/find/'+sku+"?storeview=shop_de&site="+$rootScope.site, {storeview: "shop_de", id:sku, site:$rootScope.site}).success(function(data, status, headers, config) {
         if(data != null && typeof(data) !== "undefined") {
           $log.debug (data);
           $scope.products = data;
