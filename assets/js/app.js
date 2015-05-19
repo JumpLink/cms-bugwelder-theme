@@ -101,6 +101,32 @@ jumplink.cms = angular.module('jumplink.cms', [
 
 jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvider) {
 
+  // Used for routes you can only visit if you are signed in, throws an error message if your are not authenticated
+  var authenticated = ['$q', '$sailsSocket', function ($q, $sailsSocket) {
+    console.log("authenticated");
+    var deferred = $q.defer();
+    $sailsSocket.get('/session/authenticated').then (function (data) {
+      if (data.data) {
+        console.log("is authenticated", data);
+        deferred.resolve();
+      } else {
+        console.log("is not authenticated", data);
+        deferred.reject('Not logged in');
+      }
+    });
+    return deferred.promise;
+  }];
+
+  // Used if you need authentication conditions
+  var isauthenticated = function ($q, $sailsSocket) {
+    console.log("authenticated");
+    var deferred = $q.defer();
+    return $sailsSocket.get('/session/authenticated').then (function (data) {
+      return data.data;
+    });
+    return deferred.promise;
+  };
+
   // use the HTML5 History API
   $locationProvider.html5Mode(false);
 
@@ -116,24 +142,9 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
   // shipping
   .state('layout.shipping', {
     url: '/shipping'
-    // , resolve:{
-    //   about: function($sailsSocket) {
-    //     return $sailsSocket.get('/content?name=about', {name: 'about'}).then (function (data) {
-    //       if(angular.isUndefined(data) || angular.isUndefined(data.data[0]))
-    //         return null;
-    //       else
-    //         return html_beautify(data.data[0].content);
-    //     });
-    //   }
-    //   , goals: function($sailsSocket, $timeout) {
-    //     return $sailsSocket.get('/content?name=goals', {name: 'goals'}).then (function (data) {
-    //       if(angular.isUndefined(data) || angular.isUndefined(data.data[0]))
-    //         return null;
-    //       else
-    //         return html_beautify(data.data[0].content);
-    //     });
-    //   }
-    // }
+    , resolve: {
+      authenticated: authenticated
+    }
     , views: {
       'content' : {
         templateUrl: 'shipping/content'
@@ -153,24 +164,20 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
       }
     }
   })
-  // gallery
-  .state('layout.gallery', {
-    url: '/gallery'
-    , resolve:{
-      images: function($sailsSocket) {
-        return $sailsSocket.get('/gallery?limit=0').then (function (data) {
-          return data.data;
-        });
-      }
-    }
+  .state('layout.error', {
+    url: '/error'
     , views: {
       'content' : {
-        templateUrl: 'gallery/content'
-        , controller: 'GalleryContentController'
+        templateUrl: 'error/content'
+        , controller: 'ErrorContentController'
       }
       , 'left-sidenav' : {
         templateUrl: 'left-sidenav'
         , controller: 'LeftSidenavController'
+      }
+      , 'right-sidenav' : {
+        templateUrl: 'right-sidenav'
+        , controller: 'RightSidenavController'
       }
       , 'footer' : {
         templateUrl: 'footer'
@@ -178,267 +185,87 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
       }
     }
   })
-  .state('layout.gallery-fullscreen', {
-    url: '/gallery/fs/:id'
-    , resolve:{
-      image: function($sailsSocket, $stateParams, $log) {
-        $log.debug("$stateParams", $stateParams);
-        return $sailsSocket.get('/gallery/'+$stateParams.id).then (function (data) {
-          $log.debug('/gallery/'+$stateParams.id, data);
-          return data.data;
-        }, function error (resp){
-          log.error(resp);
-        });
-      }
-    }
-    , views: {
-      'content' : {
-        templateUrl: 'gallery/fullscreen'
-        , controller: 'GalleryFullscreenController'
-      }
-      , 'left-sidenav' : {
-        templateUrl: 'left-sidenav'
-        , controller: 'LeftSidenavController'
-      }
-      // , 'footer' : {
-      //   templateUrl: 'footer'
-      //   , controller: 'FooterController'
-      // }
-    }
-  })
-  // gallery slideshow
-  .state('layout.gallery-slider', {
-    url: '/slider/:slideIndex'
-    , resolve:{
-      images: function($sailsSocket) {
-        return $sailsSocket.get('/gallery?limit=0').then (function (data) {
-          return data.data;
-        });
-      }
-    }
-    , views: {
-      'content' : {
-        templateUrl: 'gallery/slider'
-        , controller: 'GallerySlideController'
-      }
-      , 'left-sidenav' : {
-        templateUrl: 'gallery/left-sidenav'
-        , controller: 'LeftSidenavController'
-      }
-    }
-  })
-  // events timeline
-  .state('layout.timeline', {
-    url: '/events'
-    , resolve:{
-      events: function($sailsSocket, eventService) {
-        return $sailsSocket.get('/timeline').then (function (data) {
-          return eventService.split(data.data);
-        });
-      }
-    }
-    , views: {
-      'content' : {
-        templateUrl: 'events/timeline'
-        , controller: 'TimelineController'
-      }
-      , 'left-sidenav' : {
-        templateUrl: 'left-sidenav'
-        , controller: 'LeftSidenavController'
-      }
-      , 'footer' : {
-        templateUrl: 'footer'
-        , controller: 'FooterController'
-      }
-    }
-  })
-  // members
-  .state('layout.members', {
-    url: '/members'
-    , resolve:{
-      members: function($sailsSocket, $filter) {
-        return $sailsSocket.get('/member').then (function (data) {
-          return $filter('orderBy')(data.data, 'position');
-        });
-      }
-    }
-    , views: {
-      'content' : {
-        templateUrl: 'members/content'
-        , controller: 'MembersController'
-      }
-      , 'left-sidenav' : {
-        templateUrl: 'left-sidenav'
-        , controller: 'LeftSidenavController'
-      }
-      , 'footer' : {
-        templateUrl: 'footer'
-        , controller: 'FooterController'
-      }
-      // 'adminbar': {
-      //   templateUrl: 'adminbar'
-      // }
-    }
-  })
-  // application
-  .state('layout.application', {
-    url: '/application'
-    , resolve:{
-      application: function($sailsSocket) {
-        return $sailsSocket.get('/content?name=application', {name: 'application'}).then (function (data) {
-          if(angular.isDefined(data) && angular.isDefined(data.data[0]) && angular.isDefined(data.data[0].content))
-            return html_beautify(data.data[0].content);
-          else
-            return null;
-        });
-      }
-    }
-    , views: {
-      'content' : {
-        templateUrl: 'application/content'
-        , controller: 'ApplicationController'
-      }
-      , 'left-sidenav' : {
-        templateUrl: 'left-sidenav'
-        , controller: 'LeftSidenavController'
-      }
-      , 'footer' : {
-        templateUrl: 'footer'
-        , controller: 'FooterController'
-      }
-    }
-  })
-  // imprint
-  .state('layout.imprint', {
-    url: '/imprint'
-    , resolve:{
-      imprint: function($sailsSocket) {
-        return $sailsSocket.get('/content?name=imprint', {name: 'imprint'}).then (function (data) {
-          if(angular.isUndefined(data) || angular.isUndefined(data.data[0]))
-            return null;
-          else
-            return html_beautify(data.data[0].content);
-        });
-      }
-    }
-    , views: {
-      'content' : {
-        templateUrl: 'imprint/content'
-        , controller: 'ImprintController'
-      }
-      , 'left-sidenav' : {
-        templateUrl: 'left-sidenav'
-        , controller: 'LeftSidenavController'
-      }
-      , 'footer' : {
-        templateUrl: 'footer'
-        , controller: 'FooterController'
-      }
-    }
-  })
-  // links
-  .state('layout.links', {
-    url: '/links'
-    , resolve:{
-      links: function($sailsSocket) {
-        return $sailsSocket.get('/content?name=links', {name: 'links'}).then (function (data) {
-          if(angular.isUndefined(data) || angular.isUndefined(data.data[0]))
-            return null;
-          else
-            return html_beautify(data.data[0].content);
-        });
-      }
-    }
-    , views: {
-      'content' : {
-        templateUrl: 'links/content'
-        , controller: 'LinksController'
-      }
-      , 'left-sidenav' : {
-        templateUrl: 'left-sidenav'
-        , controller: 'LeftSidenavController'
-      }
-      , 'footer' : {
-        templateUrl: 'footer'
-        , controller: 'FooterController'
-      }
-    }
-  })
-  // administration
-  .state('layout.administration', {
-    url: '/admin'
-    , resolve:{
-      themeSettings: function($sailsSocket) {
-        return $sailsSocket.get('/theme/find').then (function (data) {
-          console.log(data);
-          return data.data;
-        });
-      }
-    }
-    , views: {
-      'content' : {
-        templateUrl: 'administration/settings'
-        , controller: 'AdminController'
-      }
-      , 'left-sidenav' : {
-        templateUrl: 'left-sidenav'
-        , controller: 'LeftSidenavController'
-      }
-    }
-  })
-  .state('layout.users', {
-    url: '/users'
-    , resolve:{
-      users: function($sailsSocket) {
-        return $sailsSocket.get('/user').then (function (data) {
-          return data.data;
-        });
-      }
-    }
-    , views: {
-      'content' : {
-        templateUrl: 'administration/users'
-        , controller: 'UsersController'
-      }
-      , 'left-sidenav' : {
-        templateUrl: 'left-sidenav'
-        , controller: 'LeftSidenavController'
-      }
-    }
-  })
-  .state('layout.user', {
-    url: '/user/:index'
-    , resolve:{
-      user: function($sailsSocket, $stateParams) {
-        return $sailsSocket.get('/user'+'/'+$stateParams.index).then (function (data) {
-          delete data.data.password;
-          return data.data;
-        });
-      }
-    }
-    , views: {
-      'content' : {
-        templateUrl: 'administration/user'
-        , controller: 'UserController'
-      }
-      , 'left-sidenav' : {
-        templateUrl: 'left-sidenav'
-        , controller: 'LeftSidenavController'
-      }
-    }
-  })
-  .state('layout.new-user', {
-    url: '/new/user'
-    , views: {
-      'content' : {
-        templateUrl: 'administration/user'
-        , controller: 'UserNewController'
-      }
-      , 'left-sidenav' : {
-        templateUrl: 'left-sidenav'
-        , controller: 'LeftSidenavController'
-      }
-    }
-  })
-  ;
-});
+  // ADMIN
+  // .state('layout.administration', {
+  //   url: '/admin'
+  //   , resolve:{
+  //     themeSettings: function($sailsSocket) {
+  //       return $sailsSocket.get('/theme/find').then (function (data) {
+  //         console.log(data);
+  //         return data.data;
+  //       });
+  //     }
+  //   }
+  //   , views: {
+  //     'content' : {
+  //       templateUrl: 'administration/settings'
+  //       , controller: 'AdminController'
+  //     }
+  //     , 'left-sidenav' : {
+  //       templateUrl: 'left-sidenav'
+  //       , controller: 'LeftSidenavController'
+  //     }
+  //   }
+  // })
+  // .state('layout.users', {
+  //   url: '/users'
+  //   , resolve:{
+  //     users: function($sailsSocket) {
+  //       return $sailsSocket.get('/user').then (function (data) {
+  //         return data.data;
+  //       });
+  //     }
+  //   }
+  //   , views: {
+  //     'content' : {
+  //       templateUrl: 'administration/users'
+  //       , controller: 'UsersController'
+  //     }
+  //     , 'left-sidenav' : {
+  //       templateUrl: 'left-sidenav'
+  //       , controller: 'LeftSidenavController'
+  //     }
+  //   }
+  // })
+  // .state('layout.user', {
+  //   url: '/user/:index'
+  //   , resolve:{
+  //     user: function($sailsSocket, $stateParams) {
+  //       return $sailsSocket.get('/user'+'/'+$stateParams.index).then (function (data) {
+  //         delete data.data.password;
+  //         return data.data;
+  //       });
+  //     }
+  //   }
+  //   , views: {
+  //     'content' : {
+  //       templateUrl: 'administration/user'
+  //       , controller: 'UserController'
+  //     }
+  //     , 'left-sidenav' : {
+  //       templateUrl: 'left-sidenav'
+  //       , controller: 'LeftSidenavController'
+  //     }
+  //   }
+  // })
+  // .state('layout.new-user', {
+  //   url: '/new/user'
+  //   , views: {
+  //     'content' : {
+  //       templateUrl: 'administration/user'
+  //       , controller: 'UserNewController'
+  //     }
+  //     , 'left-sidenav' : {
+  //       templateUrl: 'left-sidenav'
+  //       , controller: 'LeftSidenavController'
+  //     }
+  //   }
+  // })
+})
+.run(function ($rootScope, $state, $window, $log) {
+  $rootScope.$on('$stateChangeError', function (event, toState, toParams, fromState, fromParams, error) {
+    $log.error(error);
+    $state.go('layout.error', {error: error});
+  });
+})
+;

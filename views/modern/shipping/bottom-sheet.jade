@@ -6,7 +6,7 @@ md-bottom-sheet.md-list.no-padding
       md-button.md-icon-button(aria-label='Close', ng-click='hide()')
         ng-md-icon(icon='close', style='fill: white;', size="28")  
   md-content
-    img(ng-src="{{product.images[0].url}}", width="200")
+    //- img(ng-src="{{product.images[0].url}}", width="200")
     div(layout='', layout-sm='column')
       md-input-container(flex='')
         label Heritage Menge
@@ -26,5 +26,5 @@ md-bottom-sheet.md-list.no-padding
         input(ng-model='product.stock_strichweg_row', type='text')
     section(layout='row', layout-sm='column')
       span(flex='')
-      md-button.md-raised Abbrechen
-      md-button.md-raised.md-primary Speichern
+      md-button.md-raised(aria-label='Cancel', ng-click='hide()') Abbrechen
+      md-button.md-raised.md-primary(aria-label='Save' ng-click="save()") Speichern
