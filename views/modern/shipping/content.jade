@@ -43,9 +43,7 @@ md-tabs.fill-height(md-dynamic-height='', md-border-bottom='', flex)
       md-content(layout-padding, flex)
         md-list
           md-list-item.md-2-line(ng-repeat="product in products", ng-click="showProduct(product, $event)")
-            // button.md-no-style.md-button.md-default-theme
-              .md-list-item-inner
-            img.md-avatar(ng-src='{{product.images[0].url}}', alt='{{todos[0].who}}')
+            // img.md-avatar(ng-src='{{product.images[0].url}}', alt='{{todos[0].who}}')
             .md-list-item-text
               h3 {{product.sku}}
               p {{ product.name }}
