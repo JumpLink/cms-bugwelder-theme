@@ -1,5 +1,5 @@
 doctype html
-html(lang="en", ng-app="jumplink.cms", ng-controller="AppController", ng-init="$root.user = #{user}; $root.site = #{site};")
+html(layout-fill, lang="en", ng-app="jumplink.cms", ng-controller="AppController", ng-init="$root.user = #{user}; $root.site = #{site};")
   head
     //- base(href="/")
     title Bugwelder Sails
@@ -56,13 +56,13 @@ html(lang="en", ng-app="jumplink.cms", ng-controller="AppController", ng-init="$
     //- script(type="text/ng-template", id="administration/settings"): include ./administration/settings.jade
     //- script(type="text/ng-template", id="administration/users"): include ./administration/users.jade
     //- script(type="text/ng-template", id="administration/user"): include ./administration/user.jade
-  body(ng-class="bodyclass")
+  body(layout-fill, ng-class="bodyclass")
     if force != 'modern'
       noscript
         div(style="padding: 40px 15px;text-align: center;")
           h1 Sie haben JavaScript deaktivert.
           a.btn.btn-primary.btn-lg(href="https://"+url+"?force=noscript") Kompatiblitätsmodus aktivieren
-    span(ui-view)
+    div(layout-fill, ui-view, style="height:100%")
     // SCRIPTS
     script(type="text/javascript", charset="utf-8", src="assets/js/app.concat.js")
     // script(type="text/javascript", charset="utf-8", src="assets/js/app.min.js")

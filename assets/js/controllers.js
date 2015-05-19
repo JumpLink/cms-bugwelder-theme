@@ -414,7 +414,7 @@ jumplink.cms.controller('ShippingContentController', function($rootScope, $scope
         if(data != null && typeof(data) !== "undefined") {
           $log.debug (data);
           $scope.products = data;
-          loadImages($scope.products);
+          // loadImages($scope.products);
         } else {
           $log.error ("Can't save image");
         }
@@ -424,10 +424,20 @@ jumplink.cms.controller('ShippingContentController', function($rootScope, $scope
     }
   }
 
-  $scope.checkInput = function (event) {
+  $scope.checkInput = function (input) {
+    var inputString = input || $scope.search;
+    if(inputString.length >= 3) {
+      loadSkus(inputString);
+    } else {
+      $rootScope.pop("error", "Sie müssen mindestens 3 Zeichen eingeben.")
+    }
+    
+  }
+
+  $scope.checkInputEvent = function (event) {
     $log.debug(event, $scope.search);
-    if(event.keyIdentifier === "Enter") {
-      loadSkus($scope.search);
+    if(event && event.keyIdentifier === "Enter") {
+      $scope.checkInput($scope.search);
     }
   }
 

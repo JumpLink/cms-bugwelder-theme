@@ -31,6 +31,14 @@
 // @import (less) "./../third-party/leaflet/dist/leaflet.css";
 // @import (less) "./../third-party/Leaflet.label/dist/leaflet.label.css";
 
+
+html {
+  height: 100%;
+  body {
+    height: 100%;
+  }
+}
+
 // Ace
 .ace_editor { height: 300px; }
 
@@ -52,6 +60,7 @@ md-bottom-sheet {
   }
 }
 
+// Sidebar
 md-list-item .md-list-item-inner>ng-md-icon:first-child,
 md-list-item>ng-md-icon:first-child {
   margin-right: 32px;
@@ -66,23 +75,47 @@ md-list-item>div.md-secondary>ng-md-icon,
 md-list-item>ng-md-icon.md-secondary,
 md-list-item>ng-md-icon:first-child {
   width: 24px;
-  margin-top: 16px;
+  margin-top: 21px;
   margin-bottom: 12px;
   box-sizing: content-box;
 }
 
-md-input-container.md-icon-float>ng-md-icon {
-  top: 26px;
-  left: 2px;
+// Input with Icon / Botton
+md-input-container {
+  > .md-button.md-icon-button {
+    width: 24px;
+    height: 24px;
+  }
+  > .md-button.md-icon-button,
+  > ng-md-icon {
+    position: absolute;
+    top: 21px;
+    left: 2px;
+    + input {
+      // margin-left: $icon-offset;
+      margin-left: 36px;
+    }
+  }
 }
 
-md-input-container>ng-md-icon {
-  position: absolute;
-  top: 5px;
-  left: 2px;
-}
 
-md-input-container.md-icon-float>ng-md-icon+input {
-  margin-left: 36px;
-}
+md-tabs.fill-height {
+  display: flex;
+  flex-direction: column;
 
+  md-tabs-wrapper {
+
+  }
+  md-tabs-content-wrapper {
+    flex: 1;
+    flex-direction: column;
+    display: flex;
+    md-tab-content {
+      &.md-active {
+        flex: 1;
+        flex-direction: column;
+        display: flex;
+      }
+    }
+  }
+}
