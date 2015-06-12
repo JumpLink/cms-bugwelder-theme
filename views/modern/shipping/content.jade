@@ -29,35 +29,19 @@ md-toolbar
     md-button.md-icon-button(aria-label='More', ng-click='toggleRight()')
       //- md-icon(md-svg-icon='img/icons/more_vert.svg' )
       ng-md-icon(icon="more_vert", size="28", style='fill: white;')
-md-tabs.fill-height(md-dynamic-height='', md-border-bottom='', flex)
-  md-tab(layout="column", label='Alle', flex)
-    md-content(layout="column", flex)
-      md-content(layout-padding)
-        //- md-input-container.md-no-float
-        md-input-container.md-icon-float
-          label Suche
-          md-button.md-icon-button(aria-label='Search', ng-click="checkInput();")
-            ng-md-icon(icon='search', size="28")
-          //- ng-md-icon(icon='search', size="28")
-          input(ng-keyup="checkInputEvent($event)", type="text", ng-model='search')
-      md-content(layout-padding, flex)
-        md-list
-          md-list-item.md-2-line(ng-repeat="product in products", ng-click="showProduct(product, $event)")
-            // img.md-avatar(ng-src='{{product.images[0].url}}', alt='{{todos[0].who}}')
-            .md-list-item-text
-              h3 {{product.sku}}
-              p {{ product.name }}
-  md-tab(label='Kategorie 1')
-    md-content(layout-padding)
-      h1.md-display-2 Kategorie1   
-      p
-        | Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla venenatis ante augue. Phasellus volutpat neque ac dui mattis vulputate. Etiam consequat aliquam cursus. In sodales pretium ultrices. Maecenas lectus est, sollicitudin consectetur felis nec, feugiat ultricies mi. Aliquam erat volutpat. Nam placerat, tortor in ultrices porttitor, orci enim rutrum enim, vel tempor sapien arcu a tellus. Vivamus convallis sodales ante varius gravida. Curabitur a purus vel augue ultrices ultricies id a nisl. Nullam malesuada consequat diam, a facilisis tortor volutpat et. Sed urna dolor, aliquet vitae posuere vulputate, euismod ac lorem. Sed felis risus, pulvinar at interdum quis, vehicula sed odio. Phasellus in enim venenatis, iaculis tortor eu, bibendum ante. Donec ac tellus dictum neque volutpat blandit. Praesent efficitur faucibus risus, ac auctor purus porttitor vitae. Phasellus ornare dui nec orci posuere, nec luctus mauris semper.
-      p
-        | Morbi viverra, ante vel aliquet tincidunt, leo dolor pharetra quam, at semper massa orci nec magna. Donec posuere nec sapien sed laoreet. Etiam cursus nunc in condimentum facilisis. Etiam in tempor tortor. Vivamus faucibus egestas enim, at convallis diam pulvinar vel. Cras ac orci eget nisi maximus cursus. Nunc urna libero, viverra sit amet nisl at, hendrerit tempor turpis. Maecenas facilisis convallis mi vel tempor. Nullam vitae nunc leo. Cras sed nisl consectetur, rhoncus sapien sit amet, tempus sapien.   
-      p
-        | Integer turpis erat, porttitor vitae mi faucibus, laoreet interdum tellus. Curabitur posuere molestie dictum. Morbi eget congue risus, quis rhoncus quam. Suspendisse vitae hendrerit erat, at posuere mi. Cras eu fermentum nunc. Sed id ante eu orci commodo volutpat non ac est. Praesent ligula diam, congue eu enim scelerisque, finibus commodo lectus. 
-  md-tab(label='Kategorie 2')
-    md-content
-      h1.md-display-2 Kategorie2
-      p
-        | Integer turpis erat, porttitor vitae mi faucibus
+md-content(layout="column", flex)
+  md-content(layout-padding)
+    //- md-input-container.md-no-float
+    md-input-container.md-icon-float
+      label Suche
+      md-button.md-icon-button(aria-label='Search', ng-click="checkInput();")
+        ng-md-icon(icon='search', size="28")
+      //- ng-md-icon(icon='search', size="28")
+      input(ng-keyup="checkInputEvent($event, search)", type="text", ng-model='search')
+  md-content(layout-padding, flex)
+    md-list
+      md-list-item.md-2-line(ng-repeat="product in products | limitTo:10", ng-click="showProduct(product, $event)")
+        // img.md-avatar(ng-src='{{product.images[0].url}}', alt='{{todos[0].who}}')
+        .md-list-item-text
+          h3 {{product.sku}}
+          p {{ product.name }}

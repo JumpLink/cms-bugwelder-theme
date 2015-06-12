@@ -158,9 +158,28 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
         templateUrl: 'right-sidenav'
         , controller: 'RightSidenavController'
       }
-      , 'footer' : {
-        templateUrl: 'footer'
-        , controller: 'FooterController'
+    }
+  })
+  .state('layout.vwheritage', {
+    url: '/vwheritage'
+    , resolve: {
+      authenticated: authenticated,
+      products: function(VWHeritageService) {
+        return VWHeritageService.resolveCatalogProductList();
+      }
+    }
+    , views: {
+      'content' : {
+        templateUrl: 'vwheritage/content'
+        , controller: 'VWHeritageContentController'
+      }
+      , 'left-sidenav' : {
+        templateUrl: 'left-sidenav'
+        , controller: 'LeftSidenavController'
+      }
+      , 'right-sidenav' : {
+        templateUrl: 'right-sidenav'
+        , controller: 'RightSidenavController'
       }
     }
   })
@@ -179,88 +198,8 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
         templateUrl: 'right-sidenav'
         , controller: 'RightSidenavController'
       }
-      , 'footer' : {
-        templateUrl: 'footer'
-        , controller: 'FooterController'
-      }
     }
   })
-  // ADMIN
-  // .state('layout.administration', {
-  //   url: '/admin'
-  //   , resolve:{
-  //     themeSettings: function($sailsSocket) {
-  //       return $sailsSocket.get('/theme/find').then (function (data) {
-  //         console.log(data);
-  //         return data.data;
-  //       });
-  //     }
-  //   }
-  //   , views: {
-  //     'content' : {
-  //       templateUrl: 'administration/settings'
-  //       , controller: 'AdminController'
-  //     }
-  //     , 'left-sidenav' : {
-  //       templateUrl: 'left-sidenav'
-  //       , controller: 'LeftSidenavController'
-  //     }
-  //   }
-  // })
-  // .state('layout.users', {
-  //   url: '/users'
-  //   , resolve:{
-  //     users: function($sailsSocket) {
-  //       return $sailsSocket.get('/user').then (function (data) {
-  //         return data.data;
-  //       });
-  //     }
-  //   }
-  //   , views: {
-  //     'content' : {
-  //       templateUrl: 'administration/users'
-  //       , controller: 'UsersController'
-  //     }
-  //     , 'left-sidenav' : {
-  //       templateUrl: 'left-sidenav'
-  //       , controller: 'LeftSidenavController'
-  //     }
-  //   }
-  // })
-  // .state('layout.user', {
-  //   url: '/user/:index'
-  //   , resolve:{
-  //     user: function($sailsSocket, $stateParams) {
-  //       return $sailsSocket.get('/user'+'/'+$stateParams.index).then (function (data) {
-  //         delete data.data.password;
-  //         return data.data;
-  //       });
-  //     }
-  //   }
-  //   , views: {
-  //     'content' : {
-  //       templateUrl: 'administration/user'
-  //       , controller: 'UserController'
-  //     }
-  //     , 'left-sidenav' : {
-  //       templateUrl: 'left-sidenav'
-  //       , controller: 'LeftSidenavController'
-  //     }
-  //   }
-  // })
-  // .state('layout.new-user', {
-  //   url: '/new/user'
-  //   , views: {
-  //     'content' : {
-  //       templateUrl: 'administration/user'
-  //       , controller: 'UserNewController'
-  //     }
-  //     , 'left-sidenav' : {
-  //       templateUrl: 'left-sidenav'
-  //       , controller: 'LeftSidenavController'
-  //     }
-  //   }
-  // })
 })
 .run(function ($rootScope, $state, $window, $log) {
   $rootScope.$on('$stateChangeError', function (event, toState, toParams, fromState, fromParams, error) {

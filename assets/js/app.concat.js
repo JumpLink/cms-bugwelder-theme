@@ -13,6 +13,7 @@
 // see https://github.com/umdjs/umd/blob/master/returnExports.js
 (function (root, factory) {
     'use strict';
+
     /*global define, exports, module */
     if (typeof define === 'function' && define.amd) {
         // AMD. Register as an anonymous module.
@@ -48,6 +49,7 @@ var array_slice = ArrayPrototype.slice;
 var array_splice = ArrayPrototype.splice;
 var array_push = ArrayPrototype.push;
 var array_unshift = ArrayPrototype.unshift;
+var array_concat = ArrayPrototype.concat;
 var call = FunctionPrototype.call;
 
 // Having a toString local variable name breaks in Opera so use to_string.
@@ -80,8 +82,10 @@ var isArguments = function isArguments(value) {
 var defineProperties = (function (has) {
   var supportsDescriptors = Object.defineProperty && (function () {
       try {
-          Object.defineProperty({}, 'x', {});
-          return true;
+          var obj = {};
+          Object.defineProperty(obj, 'x', { enumerable: false, value: obj });
+          for (var _ in obj) { return false; }
+          return obj.x === obj;
       } catch (e) { /* this is ES3 */
           return false;
       }
@@ -121,14 +125,10 @@ var defineProperties = (function (has) {
 //
 
 /* replaceable with https://npmjs.com/package/es-abstract /helpers/isPrimitive */
-function isPrimitive(input) {
+var isPrimitive = function isPrimitive(input) {
     var type = typeof input;
-    return input === null ||
-        type === 'undefined' ||
-        type === 'boolean' ||
-        type === 'number' ||
-        type === 'string';
-}
+    return input === null || (type !== 'object' && type !== 'function');
+};
 
 var ES = {
     // ES5 9.4
@@ -238,7 +238,7 @@ defineProperties(FunctionPrototype, {
 
                 var result = target.apply(
                     this,
-                    args.concat(array_slice.call(arguments))
+                    array_concat.call(args, array_slice.call(arguments))
                 );
                 if (Object(result) === result) {
                     return result;
@@ -267,7 +267,7 @@ defineProperties(FunctionPrototype, {
                 // equiv: target.call(this, ...boundArgs, ...args)
                 return target.apply(
                     that,
-                    args.concat(array_slice.call(arguments))
+                    array_concat.call(args, array_slice.call(arguments))
                 );
 
             }
@@ -428,6 +428,7 @@ var properlyBoxesContext = function properlyBoxed(method) {
 
         method.call([1], function () {
             'use strict';
+
             properlyBoxesStrict = typeof this === 'string';
         }, 'x');
     }
@@ -435,24 +436,30 @@ var properlyBoxesContext = function properlyBoxed(method) {
 };
 
 defineProperties(ArrayPrototype, {
-    forEach: function forEach(fun /*, thisp*/) {
-        var object = ES.ToObject(this),
-            self = splitString && isString(this) ? this.split('') : object,
-            thisp = arguments[1],
-            i = -1,
-            length = self.length >>> 0;
+    forEach: function forEach(callbackfn /*, thisArg*/) {
+        var object = ES.ToObject(this);
+        var self = splitString && isString(this) ? this.split('') : object;
+        var i = -1;
+        var length = self.length >>> 0;
+        var T;
+        if (arguments.length > 1) {
+          T = arguments[1];
+        }
 
         // If no callback function or if callback is not a callable function
-        if (!isCallable(fun)) {
-            throw new TypeError(); // TODO message
+        if (!isCallable(callbackfn)) {
+            throw new TypeError('Array.prototype.forEach callback must be a function');
         }
 
         while (++i < length) {
             if (i in self) {
                 // Invoke the callback function with call, passing arguments:
                 // context, property value, property key, thisArg object
-                // context
-                fun.call(thisp, self[i], i, object);
+                if (typeof T !== 'undefined') {
+                    callbackfn.call(T, self[i], i, object);
+                } else {
+                    callbackfn(self[i], i, object);
+                }
             }
         }
     }
@@ -462,21 +469,28 @@ defineProperties(ArrayPrototype, {
 // http://es5.github.com/#x15.4.4.19
 // https://developer.mozilla.org/en/Core_JavaScript_1.5_Reference/Objects/Array/map
 defineProperties(ArrayPrototype, {
-    map: function map(fun /*, thisp*/) {
-        var object = ES.ToObject(this),
-            self = splitString && isString(this) ? this.split('') : object,
-            length = self.length >>> 0,
-            result = Array(length),
-            thisp = arguments[1];
+    map: function map(callbackfn/*, thisArg*/) {
+        var object = ES.ToObject(this);
+        var self = splitString && isString(this) ? this.split('') : object;
+        var length = self.length >>> 0;
+        var result = Array(length);
+        var T;
+        if (arguments.length > 1) {
+            T = arguments[1];
+        }
 
         // If no callback function or if callback is not a callable function
-        if (!isCallable(fun)) {
-            throw new TypeError(fun + ' is not a function');
+        if (!isCallable(callbackfn)) {
+            throw new TypeError('Array.prototype.map callback must be a function');
         }
 
         for (var i = 0; i < length; i++) {
             if (i in self) {
-                result[i] = fun.call(thisp, self[i], i, object);
+                if (typeof T !== 'undefined') {
+                    result[i] = callbackfn.call(T, self[i], i, object);
+                } else {
+                    result[i] = callbackfn(self[i], i, object);
+                }
             }
         }
         return result;
@@ -487,23 +501,26 @@ defineProperties(ArrayPrototype, {
 // http://es5.github.com/#x15.4.4.20
 // https://developer.mozilla.org/en/Core_JavaScript_1.5_Reference/Objects/Array/filter
 defineProperties(ArrayPrototype, {
-    filter: function filter(fun /*, thisp */) {
-        var object = ES.ToObject(this),
-            self = splitString && isString(this) ? this.split('') : object,
-            length = self.length >>> 0,
-            result = [],
-            value,
-            thisp = arguments[1];
+    filter: function filter(callbackfn /*, thisArg*/) {
+        var object = ES.ToObject(this);
+        var self = splitString && isString(this) ? this.split('') : object;
+        var length = self.length >>> 0;
+        var result = [];
+        var value;
+        var T;
+        if (arguments.length > 1) {
+            T = arguments[1];
+        }
 
         // If no callback function or if callback is not a callable function
-        if (!isCallable(fun)) {
-            throw new TypeError(fun + ' is not a function');
+        if (!isCallable(callbackfn)) {
+            throw new TypeError('Array.prototype.filter callback must be a function');
         }
 
         for (var i = 0; i < length; i++) {
             if (i in self) {
                 value = self[i];
-                if (fun.call(thisp, value, i, object)) {
+                if (typeof T === 'undefined' ? callbackfn(value, i, object) : callbackfn.call(T, value, i, object)) {
                     result.push(value);
                 }
             }
@@ -516,19 +533,22 @@ defineProperties(ArrayPrototype, {
 // http://es5.github.com/#x15.4.4.16
 // https://developer.mozilla.org/en/JavaScript/Reference/Global_Objects/Array/every
 defineProperties(ArrayPrototype, {
-    every: function every(fun /*, thisp */) {
-        var object = ES.ToObject(this),
-            self = splitString && isString(this) ? this.split('') : object,
-            length = self.length >>> 0,
-            thisp = arguments[1];
+    every: function every(callbackfn /*, thisArg*/) {
+        var object = ES.ToObject(this);
+        var self = splitString && isString(this) ? this.split('') : object;
+        var length = self.length >>> 0;
+        var T;
+        if (arguments.length > 1) {
+            T = arguments[1];
+        }
 
         // If no callback function or if callback is not a callable function
-        if (!isCallable(fun)) {
-            throw new TypeError(fun + ' is not a function');
+        if (!isCallable(callbackfn)) {
+            throw new TypeError('Array.prototype.every callback must be a function');
         }
 
         for (var i = 0; i < length; i++) {
-            if (i in self && !fun.call(thisp, self[i], i, object)) {
+            if (i in self && !(typeof T === 'undefined' ? callbackfn(self[i], i, object) : callbackfn.call(T, self[i], i, object))) {
                 return false;
             }
         }
@@ -540,19 +560,22 @@ defineProperties(ArrayPrototype, {
 // http://es5.github.com/#x15.4.4.17
 // https://developer.mozilla.org/en/JavaScript/Reference/Global_Objects/Array/some
 defineProperties(ArrayPrototype, {
-    some: function some(fun /*, thisp */) {
-        var object = ES.ToObject(this),
-            self = splitString && isString(this) ? this.split('') : object,
-            length = self.length >>> 0,
-            thisp = arguments[1];
+    some: function some(callbackfn/*, thisArg */) {
+        var object = ES.ToObject(this);
+        var self = splitString && isString(this) ? this.split('') : object;
+        var length = self.length >>> 0;
+        var T;
+        if (arguments.length > 1) {
+            T = arguments[1];
+        }
 
         // If no callback function or if callback is not a callable function
-        if (!isCallable(fun)) {
-            throw new TypeError(fun + ' is not a function');
+        if (!isCallable(callbackfn)) {
+            throw new TypeError('Array.prototype.some callback must be a function');
         }
 
         for (var i = 0; i < length; i++) {
-            if (i in self && fun.call(thisp, self[i], i, object)) {
+            if (i in self && (typeof T === 'undefined' ? callbackfn(self[i], i, object) : callbackfn.call(T, self[i], i, object))) {
                 return true;
             }
         }
@@ -568,18 +591,18 @@ if (ArrayPrototype.reduce) {
     reduceCoercesToObject = typeof ArrayPrototype.reduce.call('es5', function (_, __, ___, list) { return list; }) === 'object';
 }
 defineProperties(ArrayPrototype, {
-    reduce: function reduce(fun /*, initial*/) {
-        var object = ES.ToObject(this),
-            self = splitString && isString(this) ? this.split('') : object,
-            length = self.length >>> 0;
+    reduce: function reduce(callbackfn /*, initialValue*/) {
+        var object = ES.ToObject(this);
+        var self = splitString && isString(this) ? this.split('') : object;
+        var length = self.length >>> 0;
 
         // If no callback function or if callback is not a callable function
-        if (!isCallable(fun)) {
-            throw new TypeError(fun + ' is not a function');
+        if (!isCallable(callbackfn)) {
+            throw new TypeError('Array.prototype.reduce callback must be a function');
         }
 
         // no value to return if no initial value and an empty array
-        if (!length && arguments.length === 1) {
+        if (length === 0 && arguments.length === 1) {
             throw new TypeError('reduce of empty array with no initial value');
         }
 
@@ -603,7 +626,7 @@ defineProperties(ArrayPrototype, {
 
         for (; i < length; i++) {
             if (i in self) {
-                result = fun.call(void 0, result, self[i], i, object);
+                result = callbackfn(result, self[i], i, object);
             }
         }
 
@@ -619,22 +642,23 @@ if (ArrayPrototype.reduceRight) {
     reduceRightCoercesToObject = typeof ArrayPrototype.reduceRight.call('es5', function (_, __, ___, list) { return list; }) === 'object';
 }
 defineProperties(ArrayPrototype, {
-    reduceRight: function reduceRight(fun /*, initial*/) {
-        var object = ES.ToObject(this),
-            self = splitString && isString(this) ? this.split('') : object,
-            length = self.length >>> 0;
+    reduceRight: function reduceRight(callbackfn/*, initial*/) {
+        var object = ES.ToObject(this);
+        var self = splitString && isString(this) ? this.split('') : object;
+        var length = self.length >>> 0;
 
         // If no callback function or if callback is not a callable function
-        if (!isCallable(fun)) {
-            throw new TypeError(fun + ' is not a function');
+        if (!isCallable(callbackfn)) {
+            throw new TypeError('Array.prototype.reduceRight callback must be a function');
         }
 
         // no value to return if no initial value, empty array
-        if (!length && arguments.length === 1) {
+        if (length === 0 && arguments.length === 1) {
             throw new TypeError('reduceRight of empty array with no initial value');
         }
 
-        var result, i = length - 1;
+        var result;
+        var i = length - 1;
         if (arguments.length >= 2) {
             result = arguments[1];
         } else {
@@ -657,7 +681,7 @@ defineProperties(ArrayPrototype, {
 
         do {
             if (i in self) {
-                result = fun.call(void 0, result, self[i], i, object);
+                result = callbackfn(result, self[i], i, object);
             }
         } while (i--);
 
@@ -670,11 +694,11 @@ defineProperties(ArrayPrototype, {
 // https://developer.mozilla.org/en/JavaScript/Reference/Global_Objects/Array/indexOf
 var hasFirefox2IndexOfBug = Array.prototype.indexOf && [0, 1].indexOf(1, 2) !== -1;
 defineProperties(ArrayPrototype, {
-    indexOf: function indexOf(sought /*, fromIndex */) {
-        var self = splitString && isString(this) ? this.split('') : ES.ToObject(this),
-            length = self.length >>> 0;
+    indexOf: function indexOf(searchElement /*, fromIndex */) {
+        var self = splitString && isString(this) ? this.split('') : ES.ToObject(this);
+        var length = self.length >>> 0;
 
-        if (!length) {
+        if (length === 0) {
             return -1;
         }
 
@@ -686,7 +710,7 @@ defineProperties(ArrayPrototype, {
         // handle negative indices
         i = i >= 0 ? i : Math.max(0, length + i);
         for (; i < length; i++) {
-            if (i in self && self[i] === sought) {
+            if (i in self && self[i] === searchElement) {
                 return i;
             }
         }
@@ -699,11 +723,11 @@ defineProperties(ArrayPrototype, {
 // https://developer.mozilla.org/en/JavaScript/Reference/Global_Objects/Array/lastIndexOf
 var hasFirefox2LastIndexOfBug = Array.prototype.lastIndexOf && [0, 1].lastIndexOf(0, -3) !== -1;
 defineProperties(ArrayPrototype, {
-    lastIndexOf: function lastIndexOf(sought /*, fromIndex */) {
-        var self = splitString && isString(this) ? this.split('') : ES.ToObject(this),
-            length = self.length >>> 0;
+    lastIndexOf: function lastIndexOf(searchElement /*, fromIndex */) {
+        var self = splitString && isString(this) ? this.split('') : ES.ToObject(this);
+        var length = self.length >>> 0;
 
-        if (!length) {
+        if (length === 0) {
             return -1;
         }
         var i = length - 1;
@@ -713,7 +737,7 @@ defineProperties(ArrayPrototype, {
         // handle negative indices
         i = i >= 0 ? i : length - Math.abs(i);
         for (; i >= 0; i--) {
-            if (i in self && sought === self[i]) {
+            if (i in self && searchElement === self[i]) {
                 return i;
             }
         }
@@ -730,7 +754,7 @@ defineProperties(ArrayPrototype, {
 // http://es5.github.com/#x15.2.3.14
 
 // http://whattheheadsaid.com/2010/10/a-safer-object-keys-compatibility-implementation
-var hasDontEnumBug = !({'toString': null}).propertyIsEnumerable('toString'),
+var hasDontEnumBug = !({ 'toString': null }).propertyIsEnumerable('toString'),
     hasProtoEnumBug = function () {}.propertyIsEnumerable('prototype'),
     hasStringEnumBug = !owns('x', '0'),
     dontEnums = [
@@ -912,7 +936,7 @@ if (!dateToJSONIsSupported) {
 // based on work shared by Daniel Friesen (dantman)
 // http://gist.github.com/303249
 var supportsExtendedYears = Date.parse('+033658-09-27T01:46:40.000Z') === 1e15;
-var acceptsInvalidDates = !isNaN(Date.parse('2012-04-04T24:00:00.500Z')) || !isNaN(Date.parse('2012-11-31T23:59:59.000Z'));
+var acceptsInvalidDates = !isNaN(Date.parse('2012-04-04T24:00:00.500Z')) || !isNaN(Date.parse('2012-11-31T23:59:59.000Z')) || !isNaN(Date.parse('2012-12-31T23:59:60.000Z'));
 var doesNotParseY2KNewYear = isNaN(Date.parse('2000-01-01T00:00:00.000Z'));
 if (!Date.parse || doesNotParseY2KNewYear || acceptsInvalidDates || !supportsExtendedYears) {
     // XXX global assignment won't work in embeddings that use
@@ -922,12 +946,13 @@ if (!Date.parse || doesNotParseY2KNewYear || acceptsInvalidDates || !supportsExt
     Date = (function (NativeDate) {
     /*eslint-enable no-undef*/
         // Date.length === 7
-        function Date(Y, M, D, h, m, s, ms) {
+        var DateShim = function Date(Y, M, D, h, m, s, ms) {
             var length = arguments.length;
+            var date;
             if (this instanceof NativeDate) {
-                var date = length === 1 && String(Y) === Y ? // isString(Y)
+                date = length === 1 && String(Y) === Y ? // isString(Y)
                     // We explicitly pass it through parse:
-                    new NativeDate(Date.parse(Y)) :
+                    new NativeDate(DateShim.parse(Y)) :
                     // We have to manually make calls depending on argument
                     // length here
                     length >= 7 ? new NativeDate(Y, M, D, h, m, s, ms) :
@@ -938,12 +963,13 @@ if (!Date.parse || doesNotParseY2KNewYear || acceptsInvalidDates || !supportsExt
                     length >= 2 ? new NativeDate(Y, M) :
                     length >= 1 ? new NativeDate(Y) :
                                   new NativeDate();
-                // Prevent mixups with unfixed Date object
-                defineProperties(date, { constructor: Date }, true);
-                return date;
+            } else {
+                date = NativeDate.apply(this, arguments);
             }
-            return NativeDate.apply(this, arguments);
-        }
+            // Prevent mixups with unfixed Date object
+            defineProperties(date, { constructor: DateShim }, true);
+            return date;
+        };
 
         // 15.9.1.15 Date Time String Format.
         var isoDateExpression = new RegExp('^' +
@@ -968,11 +994,9 @@ if (!Date.parse || doesNotParseY2KNewYear || acceptsInvalidDates || !supportsExt
             ')?)?)?)?' +
         '$');
 
-        var months = [
-            0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365
-        ];
+        var months = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365];
 
-        function dayFromMonth(year, month) {
+        var dayFromMonth = function dayFromMonth(year, month) {
             var t = month > 1 ? 1 : 0;
             return (
                 months[month] +
@@ -981,25 +1005,31 @@ if (!Date.parse || doesNotParseY2KNewYear || acceptsInvalidDates || !supportsExt
                 Math.floor((year - 1601 + t) / 400) +
                 365 * (year - 1970)
             );
-        }
+        };
 
-        function toUTC(t) {
+        var toUTC = function toUTC(t) {
             return Number(new NativeDate(1970, 0, 1, 0, 0, 0, t));
-        }
+        };
 
         // Copy any custom methods a 3rd party library may have added
         for (var key in NativeDate) {
-            Date[key] = NativeDate[key];
+            if (owns(NativeDate, key)) {
+                DateShim[key] = NativeDate[key];
+            }
         }
 
         // Copy "native" methods explicitly; they may be non-enumerable
-        Date.now = NativeDate.now;
-        Date.UTC = NativeDate.UTC;
-        Date.prototype = NativeDate.prototype;
-        Date.prototype.constructor = Date;
+        defineProperties(DateShim, {
+            now: NativeDate.now,
+            UTC: NativeDate.UTC
+        }, true);
+        DateShim.prototype = NativeDate.prototype;
+        defineProperties(DateShim.prototype, {
+            constructor: DateShim
+        }, true);
 
         // Upgrade Date.parse to handle simplified ISO 8601 strings
-        Date.parse = function parse(string) {
+        DateShim.parse = function parse(string) {
             var match = isoDateExpression.exec(string);
             if (match) {
                 // parse months, days, hours, minutes, seconds, and milliseconds
@@ -1055,7 +1085,7 @@ if (!Date.parse || doesNotParseY2KNewYear || acceptsInvalidDates || !supportsExt
             return NativeDate.parse.apply(this, arguments);
         };
 
-        return Date;
+        return DateShim;
     }(Date));
     /*global Date: false */
 }
@@ -1444,6 +1474,7 @@ if (parseInt(ws + '08') !== 8 || parseInt(ws + '0x16') !== 22) {
 // see https://github.com/umdjs/umd/blob/master/returnExports.js
 (function (root, factory) {
     'use strict';
+
     /*global define, exports, module */
     if (typeof define === 'function' && define.amd) {
         // AMD. Register as an anonymous module.
@@ -1505,14 +1536,14 @@ if (!Object.getPrototypeOf) {
 //ES5 15.2.3.3
 //http://es5.github.com/#x15.2.3.3
 
-function doesGetOwnPropertyDescriptorWork(object) {
+var doesGetOwnPropertyDescriptorWork = function doesGetOwnPropertyDescriptorWork(object) {
     try {
         object.sentinel = 0;
         return Object.getOwnPropertyDescriptor(object, 'sentinel').value === 0;
     } catch (exception) {
         return false;
     }
-}
+};
 
 //check whether getOwnPropertyDescriptor works if it's given. Otherwise,
 //shim partially.
@@ -1620,6 +1651,64 @@ if (!Object.create) {
                         // the following produces false positives
                         // in Opera Mini => not a reliable check
                         // Object.prototype.__proto__ === null
+
+    // Check for document.domain and active x support
+    // No need to use active x approach when document.domain is not set
+    // see https://github.com/es-shims/es5-shim/issues/150
+    // variation of https://github.com/kitcambridge/es5-shim/commit/4f738ac066346
+    /*global ActiveXObject */
+    var shouldUseActiveX = function shouldUseActiveX() {
+        // return early if document.domain not set
+        if (!document.domain) {
+            return false;
+        }
+
+        try {
+            return !!new ActiveXObject('htmlfile');
+        } catch (exception) {
+            return false;
+        }
+    };
+
+    // This supports IE8 when document.domain is used
+    // see https://github.com/es-shims/es5-shim/issues/150
+    // variation of https://github.com/kitcambridge/es5-shim/commit/4f738ac066346
+    var getEmptyViaActiveX = function getEmptyViaActiveX() {
+        var empty;
+        var xDoc;
+
+        xDoc = new ActiveXObject('htmlfile');
+
+        xDoc.write('<script><\/script>');
+        xDoc.close();
+
+        empty = xDoc.parentWindow.Object.prototype;
+        xDoc = null;
+
+        return empty;
+    };
+
+    // The original implementation using an iframe
+    // before the activex approach was added
+    // see https://github.com/es-shims/es5-shim/issues/150
+    var getEmptyViaIFrame = function getEmptyViaIFrame() {
+        var iframe = document.createElement('iframe');
+        var parent = document.body || document.documentElement;
+        var empty;
+
+        iframe.style.display = 'none';
+        parent.appendChild(iframe);
+        /*eslint-disable no-script-url */
+        iframe.src = 'javascript:';
+        /*eslint-enable no-script-url */
+
+        empty = iframe.contentWindow.Object.prototype;
+        parent.removeChild(iframe);
+        iframe = null;
+
+        return empty;
+    };
+
     /*global document */
     if (supportsProto || typeof document === 'undefined') {
         createEmpty = function () {
@@ -1632,16 +1721,10 @@ if (!Object.create) {
         // object and *steal* its Object.prototype and strip it bare. This is
         // used as the prototype to create nullary objects.
         createEmpty = function () {
-            var iframe = document.createElement('iframe');
-            var parent = document.body || document.documentElement;
-            iframe.style.display = 'none';
-            parent.appendChild(iframe);
-            /*eslint-disable no-script-url */
-            iframe.src = 'javascript:';
-            /*eslint-enable no-script-url */
-            var empty = iframe.contentWindow.Object.prototype;
-            parent.removeChild(iframe);
-            iframe = null;
+            // Determine which approach to use
+            // see https://github.com/es-shims/es5-shim/issues/150
+            var empty = shouldUseActiveX() ? getEmptyViaActiveX() : getEmptyViaIFrame();
+
             delete empty.constructor;
             delete empty.hasOwnProperty;
             delete empty.propertyIsEnumerable;
@@ -1653,7 +1736,7 @@ if (!Object.create) {
             empty.__proto__ = null;
             /*eslint-enable no-proto */
 
-            function Empty() {}
+            var Empty = function Empty() {};
             Empty.prototype = empty;
             // short-circuit future calls
             createEmpty = function () {
@@ -1666,7 +1749,7 @@ if (!Object.create) {
     Object.create = function create(prototype, properties) {
 
         var object;
-        function Type() {} // An empty constructor.
+        var Type = function Type() {}; // An empty constructor.
 
         if (prototype === null) {
             object = createEmpty();
@@ -1710,14 +1793,14 @@ if (!Object.create) {
 // WebKit Bugs:
 //     https://bugs.webkit.org/show_bug.cgi?id=36423
 
-function doesDefinePropertyWork(object) {
+var doesDefinePropertyWork = function doesDefinePropertyWork(object) {
     try {
         Object.defineProperty(object, 'sentinel', {});
         return 'sentinel' in object;
     } catch (exception) {
         return false;
     }
-}
+};
 
 // check whether defineProperty works if it's given. Otherwise,
 // shim partially.
@@ -1816,11 +1899,11 @@ if (!Object.defineProperties || definePropertiesFallback) {
             }
         }
 
-        for (var property in properties) {
-            if (owns(properties, property) && property !== '__proto__') {
+        Object.keys(properties).forEach(function (property) {
+            if (property !== '__proto__') {
                 Object.defineProperty(object, property, properties[property]);
             }
-        }
+        });
         return object;
     };
 }
@@ -1857,7 +1940,7 @@ if (!Object.freeze) {
 try {
     Object.freeze(function () {});
 } catch (exception) {
-    Object.freeze = (function freeze(freezeObject) {
+    Object.freeze = (function (freezeObject) {
         return function freeze(object) {
             if (typeof object === 'function') {
                 return object;
@@ -1926,7 +2009,7 @@ if (!Object.isExtensible) {
 
 }));
 ;/**
- * @license AngularJS v1.3.15
+ * @license AngularJS v1.3.16
  * (c) 2010-2014 Google, Inc. http://angularjs.org
  * License: MIT
  */
@@ -1981,7 +2064,7 @@ function minErr(module, ErrorConstructor) {
       return match;
     });
 
-    message = message + '\nhttp://errors.angularjs.org/1.3.15/' +
+    message = message + '\nhttp://errors.angularjs.org/1.3.16/' +
       (module ? module + '/' : '') + code;
     for (i = 2; i < arguments.length; i++) {
       message = message + (i == 2 ? '?' : '&') + 'p' + (i - 2) + '=' +
@@ -2076,6 +2159,7 @@ function minErr(module, ErrorConstructor) {
   createMap: true,
 
   NODE_TYPE_ELEMENT: true,
+  NODE_TYPE_ATTRIBUTE: true,
   NODE_TYPE_TEXT: true,
   NODE_TYPE_COMMENT: true,
   NODE_TYPE_DOCUMENT: true,
@@ -2187,7 +2271,9 @@ function isArrayLike(obj) {
     return false;
   }
 
-  var length = obj.length;
+  // Support: iOS 8.2 (not reproducible in simulator)
+  // "length" in obj used to prevent JIT error (gh-11508)
+  var length = "length" in Object(obj) && obj.length;
 
   if (obj.nodeType === NODE_TYPE_ELEMENT && length) {
     return true;
@@ -2969,8 +3055,8 @@ function toJsonReplacer(key, value) {
  * stripped since angular uses this notation internally.
  *
  * @param {Object|Array|Date|string|number} obj Input to be serialized into JSON.
- * @param {boolean|number=} pretty If set to true, the JSON output will contain newlines and whitespace.
- *    If set to an integer, the JSON output will contain that many spaces per indentation (the default is 2).
+ * @param {boolean|number} [pretty=2] If set to true, the JSON output will contain newlines and whitespace.
+ *    If set to an integer, the JSON output will contain that many spaces per indentation.
  * @returns {string|undefined} JSON-ified string representing `obj`.
  */
 function toJson(obj, pretty) {
@@ -3602,6 +3688,7 @@ function createMap() {
 }
 
 var NODE_TYPE_ELEMENT = 1;
+var NODE_TYPE_ATTRIBUTE = 2;
 var NODE_TYPE_TEXT = 3;
 var NODE_TYPE_COMMENT = 8;
 var NODE_TYPE_DOCUMENT = 9;
@@ -3838,10 +3925,17 @@ function setupModuleLoader(window) {
            * @ngdoc method
            * @name angular.Module#filter
            * @module ng
-           * @param {string} name Filter name.
+           * @param {string} name Filter name - this must be a valid angular expression identifier
            * @param {Function} filterFactory Factory function for creating new instance of filter.
            * @description
            * See {@link ng.$filterProvider#register $filterProvider.register()}.
+           *
+           * <div class="alert alert-warning">
+           * **Note:** Filter names must be valid angular {@link expression} identifiers, such as `uppercase` or `orderBy`.
+           * Names with special characters, such as hyphens and dots, are not allowed. If you wish to namespace
+           * your filters, then you can use capitalization (`myappSubsectionFilterx`) or underscores
+           * (`myapp_subsection_filterx`).
+           * </div>
            */
           filter: invokeLater('$filterProvider', 'register'),
 
@@ -4055,11 +4149,11 @@ function toDebugString(obj) {
  * - `codeName` – `{string}` – Code name of the release, such as "jiggling-armfat".
  */
 var version = {
-  full: '1.3.15',    // all of these placeholder strings will be replaced by grunt's
+  full: '1.3.16',    // all of these placeholder strings will be replaced by grunt's
   major: 1,    // package task
   minor: 3,
-  dot: 15,
-  codeName: 'locality-filtration'
+  dot: 16,
+  codeName: 'cookie-oatmealification'
 };
 
 
@@ -4235,7 +4329,7 @@ function publishExternalAPI(angular) {
  * Angular to manipulate the DOM in a cross-browser compatible way. **jqLite** implements only the most
  * commonly needed functionality with the goal of having a very small footprint.</div>
  *
- * To use jQuery, simply load it before `DOMContentLoaded` event fired.
+ * To use `jQuery`, simply ensure it is loaded before the `angular.js` file.
  *
  * <div class="alert">**Note:** all element references in Angular are always wrapped with jQuery or
  * jqLite; they are never raw DOM references.</div>
@@ -4251,7 +4345,7 @@ function publishExternalAPI(angular) {
  * - [`children()`](http://api.jquery.com/children/) - Does not support selectors
  * - [`clone()`](http://api.jquery.com/clone/)
  * - [`contents()`](http://api.jquery.com/contents/)
- * - [`css()`](http://api.jquery.com/css/) - Only retrieves inline-styles, does not call `getComputedStyle()`
+ * - [`css()`](http://api.jquery.com/css/) - Only retrieves inline-styles, does not call `getComputedStyle()`. As a setter, does not convert numbers to strings or append 'px'.
  * - [`data()`](http://api.jquery.com/data/)
  * - [`detach()`](http://api.jquery.com/detach/)
  * - [`empty()`](http://api.jquery.com/empty/)
@@ -4794,6 +4888,10 @@ forEach({
   },
 
   attr: function(element, name, value) {
+    var nodeType = element.nodeType;
+    if (nodeType === NODE_TYPE_TEXT || nodeType === NODE_TYPE_ATTRIBUTE || nodeType === NODE_TYPE_COMMENT) {
+      return;
+    }
     var lowercasedName = lowercase(name);
     if (BOOLEAN_ATTR[lowercasedName]) {
       if (isDefined(value)) {
@@ -5484,7 +5582,7 @@ function annotate(fn, strictDi, name) {
  * Return an instance of the service.
  *
  * @param {string} name The name of the instance to retrieve.
- * @param {string} caller An optional string to provide the origin of the function call for error messages.
+ * @param {string=} caller An optional string to provide the origin of the function call for error messages.
  * @return {*} The instance.
  */
 
@@ -5495,8 +5593,8 @@ function annotate(fn, strictDi, name) {
  * @description
  * Invoke the method and supply the method arguments from the `$injector`.
  *
- * @param {!Function} fn The function to invoke. Function parameters are injected according to the
- *   {@link guide/di $inject Annotation} rules.
+ * @param {Function|Array.<string|Function>} fn The injectable function to invoke. Function parameters are
+ *   injected according to the {@link guide/di $inject Annotation} rules.
  * @param {Object=} self The `this` for the invoked method.
  * @param {Object=} locals Optional object. If preset then any argument names are read from this
  *                         object first, before the `$injector` is consulted.
@@ -5763,8 +5861,8 @@ function annotate(fn, strictDi, name) {
  * configure your service in a provider.
  *
  * @param {string} name The name of the instance.
- * @param {function()} $getFn The $getFn for the instance creation. Internally this is a short hand
- *                            for `$provide.provider(name, {$get: $getFn})`.
+ * @param {Function|Array.<string|Function>} $getFn The injectable $getFn for the instance creation.
+ *                      Internally this is a short hand for `$provide.provider(name, {$get: $getFn})`.
  * @returns {Object} registered provider instance
  *
  * @example
@@ -5799,7 +5897,8 @@ function annotate(fn, strictDi, name) {
  * as a type/class.
  *
  * @param {string} name The name of the instance.
- * @param {Function} constructor A class (constructor function) that will be instantiated.
+ * @param {Function|Array.<string|Function>} constructor An injectable class (constructor function)
+ *     that will be instantiated.
  * @returns {Object} registered provider instance
  *
  * @example
@@ -5898,7 +5997,7 @@ function annotate(fn, strictDi, name) {
  * object which replaces or wraps and delegates to the original service.
  *
  * @param {string} name The name of the service to decorate.
- * @param {function()} decorator This function will be invoked when the service needs to be
+ * @param {Function|Array.<string|Function>} decorator This function will be invoked when the service needs to be
  *    instantiated and should return the decorated service instance. The function is called using
  *    the {@link auto.$injector#invoke injector.invoke} method and is therefore fully injectable.
  *    Local injection arguments:
@@ -7747,7 +7846,8 @@ function $TemplateCacheProvider() {
  *       templateNamespace: 'html',
  *       scope: false,
  *       controller: function($scope, $element, $attrs, $transclude, otherInjectables) { ... },
- *       controllerAs: 'stringAlias',
+ *       controllerAs: 'stringIdentifier',
+ *       bindToController: false,
  *       require: 'siblingDirectiveName', // or // ['^parentDirectiveName', '?optionalDirectiveName', '?^optionalParent'],
  *       compile: function compile(tElement, tAttrs, transclude) {
  *         return {
@@ -8066,9 +8166,15 @@ function $TemplateCacheProvider() {
  *   * `iAttrs` - instance attributes - Normalized list of attributes declared on this element shared
  *     between all directive linking functions.
  *
- *   * `controller` - a controller instance - A controller instance if at least one directive on the
- *     element defines a controller. The controller is shared among all the directives, which allows
- *     the directives to use the controllers as a communication channel.
+ *   * `controller` - the directive's required controller instance(s) - Instances are shared
+ *     among all directives, which allows the directives to use the controllers as a communication
+ *     channel. The exact value depends on the directive's `require` property:
+ *       * `string`: the controller instance
+ *       * `array`: array of controller instances
+ *       * no controller(s) required: `undefined`
+ *
+ *     If a required controller cannot be found, and it is optional, the instance is `null`,
+ *     otherwise the {@link error:$compile:ctreq Missing Required Controller} error is thrown.
  *
  *   * `transcludeFn` - A transclude linking function pre-bound to the correct transclusion scope.
  *     This is the same as the `$transclude`
@@ -8422,6 +8528,14 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
     return bindings;
   }
 
+  function assertValidDirectiveName(name) {
+    var letter = name.charAt(0);
+    if (!letter || letter !== lowercase(letter)) {
+      throw $compileMinErr('baddir', "Directive name '{0}' is invalid. The first character must be a lowercase letter", name);
+    }
+    return name;
+  }
+
   /**
    * @ngdoc method
    * @name $compileProvider#directive
@@ -8440,6 +8554,7 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
    this.directive = function registerDirective(name, directiveFactory) {
     assertNotHasOwnProperty(name, 'directive');
     if (isString(name)) {
+      assertValidDirectiveName(name);
       assertArg(directiveFactory, 'directiveFactory');
       if (!hasDirectives.hasOwnProperty(name)) {
         hasDirectives[name] = [];
@@ -10896,7 +11011,7 @@ function $HttpProvider() {
      *  headers: {
      *    'Content-Type': undefined
      *  },
-     *  data: { test: 'test' },
+     *  data: { test: 'test' }
      * }
      *
      * $http(req).success(function(){...}).error(function(){...});
@@ -11331,6 +11446,8 @@ function $HttpProvider() {
       }
 
       promise.success = function(fn) {
+        assertArgFn(fn, 'fn');
+
         promise.then(function(response) {
           fn(response.data, response.status, response.headers, config);
         });
@@ -11338,6 +11455,8 @@ function $HttpProvider() {
       };
 
       promise.error = function(fn) {
+        assertArgFn(fn, 'fn');
+
         promise.then(null, function(response) {
           fn(response.data, response.status, response.headers, config);
         });
@@ -11818,7 +11937,7 @@ function createHttpBackend($browser, createXhr, $browserDefer, callbacks, rawDoc
   };
 
   function jsonpReq(url, callbackId, done) {
-    // we can't use jQuery/jqLite here because jQuery does crazy shit with script elements, e.g.:
+    // we can't use jQuery/jqLite here because jQuery does crazy stuff with script elements, e.g.:
     // - fetches local scripts via XHR and evals them
     // - adds and immediately removes script elements from the document
     var script = rawDocument.createElement('script'), callback = null;
@@ -12879,11 +12998,19 @@ var locationPrototype = {
    *
    * Return host of current url.
    *
+   * Note: compared to the non-angular version `location.host` which returns `hostname:port`, this returns the `hostname` portion only.
+   *
    *
    * ```js
    * // given url http://example.com/#/some/path?foo=bar&baz=xoxo
    * var host = $location.host();
    * // => "example.com"
+   *
+   * // given url http://user:password@example.com:8080/#/some/path?foo=bar&baz=xoxo
+   * host = $location.host();
+   * // => "example.com"
+   * host = location.host;
+   * // => "example.com:8080"
    * ```
    *
    * @return {string} host of current url.
@@ -15438,7 +15565,7 @@ function $$RAFProvider() { //rAF
                                $window.webkitCancelRequestAnimationFrame;
 
     var rafSupported = !!requestAnimationFrame;
-    var raf = rafSupported
+    var rafFn = rafSupported
       ? function(fn) {
           var id = requestAnimationFrame(fn);
           return function() {
@@ -15452,9 +15579,47 @@ function $$RAFProvider() { //rAF
           };
         };
 
-    raf.supported = rafSupported;
+    queueFn.supported = rafSupported;
 
-    return raf;
+    var cancelLastRAF;
+    var taskCount = 0;
+    var taskQueue = [];
+    return queueFn;
+
+    function flush() {
+      for (var i = 0; i < taskQueue.length; i++) {
+        var task = taskQueue[i];
+        if (task) {
+          taskQueue[i] = null;
+          task();
+        }
+      }
+      taskCount = taskQueue.length = 0;
+    }
+
+    function queueFn(asyncFn) {
+      var index = taskQueue.length;
+
+      taskCount++;
+      taskQueue.push(asyncFn);
+
+      if (index === 0) {
+        cancelLastRAF = rafFn(flush);
+      }
+
+      return function cancelQueueFn() {
+        if (index >= 0) {
+          taskQueue[index] = null;
+          index = null;
+
+          if (--taskCount === 0 && cancelLastRAF) {
+            cancelLastRAF();
+            cancelLastRAF = null;
+            taskQueue.length = 0;
+          }
+        }
+      };
+    }
   }];
 }
 
@@ -15544,7 +15709,6 @@ function $RootScopeProvider() {
           this.$$childHead = this.$$childTail = null;
       this.$$listeners = {};
       this.$$listenerCount = {};
-      this.$$watchersCount = 0;
       this.$id = nextUid();
       this.$$ChildScope = null;
     }
@@ -18435,6 +18599,13 @@ function $WindowProvider() {
  * Dependency Injected. To achieve this a filter definition consists of a factory function which is
  * annotated with dependencies and is responsible for creating a filter function.
  *
+ * <div class="alert alert-warning">
+ * **Note:** Filter names must be valid angular {@link expression} identifiers, such as `uppercase` or `orderBy`.
+ * Names with special characters, such as hyphens and dots, are not allowed. If you wish to namespace
+ * your filters, then you can use capitalization (`myappSubsectionFilterx`) or underscores
+ * (`myapp_subsection_filterx`).
+ * </div>
+ *
  * ```js
  *   // Filter registration
  *   function MyModule($provide, $filterProvider) {
@@ -18516,6 +18687,13 @@ function $FilterProvider($provide) {
    * @name $filterProvider#register
    * @param {string|Object} name Name of the filter function, or an object map of filters where
    *    the keys are the filter names and the values are the filter factories.
+   *
+   *    <div class="alert alert-warning">
+   *    **Note:** Filter names must be valid angular {@link expression} identifiers, such as `uppercase` or `orderBy`.
+   *    Names with special characters, such as hyphens and dots, are not allowed. If you wish to namespace
+   *    your filters, then you can use capitalization (`myappSubsectionFilterx`) or underscores
+   *    (`myapp_subsection_filterx`).
+   *    </div>
    * @returns {Object} Registered filter instance, or if a map of filters was provided then a map
    *    of the registered filter instances.
    */
@@ -18689,14 +18867,16 @@ function filterFilter() {
   return function(array, expression, comparator) {
     if (!isArray(array)) return array;
 
+    var expressionType = (expression !== null) ? typeof expression : 'null';
     var predicateFn;
     var matchAgainstAnyProp;
 
-    switch (typeof expression) {
+    switch (expressionType) {
       case 'function':
         predicateFn = expression;
         break;
       case 'boolean':
+      case 'null':
       case 'number':
       case 'string':
         matchAgainstAnyProp = true;
@@ -18722,6 +18902,14 @@ function createPredicateFn(expression, comparator, matchAgainstAnyProp) {
     comparator = equals;
   } else if (!isFunction(comparator)) {
     comparator = function(actual, expected) {
+      if (isUndefined(actual)) {
+        // No substring matching against `undefined`
+        return false;
+      }
+      if ((actual === null) || (expected === null)) {
+        // No substring matching against `null`; only match against `null`
+        return actual === expected;
+      }
       if (isObject(actual) || isObject(expected)) {
         // Prevent an object to be considered equal to a string like `'[object'`
         return false;
@@ -18872,6 +19060,8 @@ function currencyFilter($locale) {
  * @description
  * Formats a number as text.
  *
+ * If the input is null or undefined, it will just be returned.
+ * If the input is infinite (Infinity/-Infinity) the Infinity symbol '∞' is returned.
  * If the input is not a number an empty string is returned.
  *
  * @param {number|string} number Number to format.
@@ -19480,7 +19670,7 @@ function limitToFilter() {
  *    Can be one of:
  *
  *    - `function`: Getter function. The result of this function will be sorted using the
- *      `<`, `=`, `>` operator.
+ *      `<`, `===`, `>` operator.
  *    - `string`: An Angular expression. The result of this expression is used to compare elements
  *      (for example `name` to sort by a property called `name` or `name.substr(0, 3)` to sort by
  *      3 first characters of a property called `name`). The result of a constant expression
@@ -20591,11 +20781,11 @@ function FormController(element, attrs, $scope, $animate, $interpolate) {
        <form name="myForm" ng-controller="FormController" class="my-form">
          userType: <input name="input" ng-model="userType" required>
          <span class="error" ng-show="myForm.input.$error.required">Required!</span><br>
-         <tt>userType = {{userType}}</tt><br>
-         <tt>myForm.input.$valid = {{myForm.input.$valid}}</tt><br>
-         <tt>myForm.input.$error = {{myForm.input.$error}}</tt><br>
-         <tt>myForm.$valid = {{myForm.$valid}}</tt><br>
-         <tt>myForm.$error.required = {{!!myForm.$error.required}}</tt><br>
+         <code>userType = {{userType}}</code><br>
+         <code>myForm.input.$valid = {{myForm.input.$valid}}</code><br>
+         <code>myForm.input.$error = {{myForm.input.$error}}</code><br>
+         <code>myForm.$valid = {{myForm.$valid}}</code><br>
+         <code>myForm.$error.required = {{!!myForm.$error.required}}</code><br>
         </form>
       </file>
       <file name="protractor.js" type="protractor">
@@ -21283,7 +21473,11 @@ var inputType = {
    * Text input with number validation and transformation. Sets the `number` validation
    * error if not a valid number.
    *
-   * The model must always be a number, otherwise Angular will throw an error.
+   * <div class="alert alert-warning">
+   * The model must always be of type `number` otherwise Angular will throw an error.
+   * Be aware that a string containing a number is not enough. See the {@link ngModel:numfmt}
+   * error docs for more information and an example of how to convert your model if necessary.
+   * </div>
    *
    * @param {string} ngModel Assignable angular expression to data-bind to.
    * @param {string=} name Property name of the form under which the control is published.
@@ -22991,17 +23185,13 @@ var ngClassEvenDirective = classDirective('Even', 1);
  * document; alternatively, the css rule above must be included in the external stylesheet of the
  * application.
  *
- * Legacy browsers, like IE7, do not provide attribute selector support (added in CSS 2.1) so they
- * cannot match the `[ng\:cloak]` selector. To work around this limitation, you must add the css
- * class `ng-cloak` in addition to the `ngCloak` directive as shown in the example below.
- *
  * @element ANY
  *
  * @example
    <example>
      <file name="index.html">
         <div id="template1" ng-cloak>{{ 'hello' }}</div>
-        <div id="template2" ng-cloak class="ng-cloak">{{ 'hello IE7' }}</div>
+        <div id="template2" class="ng-cloak">{{ 'world' }}</div>
      </file>
      <file name="protractor.js" type="protractor">
        it('should remove the template directive and css class', function() {
@@ -25026,7 +25216,7 @@ var NgModelController = ['$scope', '$exceptionHandler', '$attrs', '$element', '$
    * If the validity changes to invalid, the model will be set to `undefined`,
    * unless {@link ngModelOptions `ngModelOptions.allowInvalid`} is `true`.
    * If the validity changes to valid, it will set the model to the last available valid
-   * modelValue, i.e. either the last parsed value or the last value set from the scope.
+   * `$modelValue`, i.e. either the last parsed value or the last value set from the scope.
    */
   this.$validate = function() {
     // ignore $validate before model is initialized
@@ -25334,7 +25524,10 @@ var NgModelController = ['$scope', '$exceptionHandler', '$attrs', '$element', '$
 
     // if scope model value and ngModel value are out of sync
     // TODO(perf): why not move this to the action fn?
-    if (modelValue !== ctrl.$modelValue) {
+    if (modelValue !== ctrl.$modelValue &&
+       // checks for NaN is needed to allow setting the model to NaN when there's an asyncValidator
+       (ctrl.$modelValue === ctrl.$modelValue || modelValue === modelValue)
+    ) {
       ctrl.$modelValue = ctrl.$$rawModelValue = modelValue;
       parserValid = undefined;
 
@@ -25511,10 +25704,11 @@ var NgModelController = ['$scope', '$exceptionHandler', '$attrs', '$element', '$
            var _name = 'Brian';
            $scope.user = {
              name: function(newName) {
-               if (angular.isDefined(newName)) {
-                 _name = newName;
-               }
-               return _name;
+              // Note that newName can be undefined for two reasons:
+              // 1. Because it is called as a getter and thus called with no arguments
+              // 2. Because the property should actually be set to undefined. This happens e.g. if the
+              //    input is invalid
+              return arguments.length ? (_name = newName) : _name;
              }
            };
          }]);
@@ -25722,7 +25916,11 @@ var DEFAULT_REGEXP = /(\s+|^)default(\s+|$)/;
           var _name = 'Brian';
           $scope.user = {
             name: function(newName) {
-              return angular.isDefined(newName) ? (_name = newName) : _name;
+              // Note that newName can be undefined for two reasons:
+              // 1. Because it is called as a getter and thus called with no arguments
+              // 2. Because the property should actually be set to undefined. This happens e.g. if the
+              //    input is invalid
+              return arguments.length ? (_name = newName) : _name;
             }
           };
         }]);
@@ -27012,12 +27210,12 @@ var ngHideDirective = ['$animate', function($animate) {
    </example>
  */
 var ngStyleDirective = ngDirective(function(scope, element, attr) {
-  scope.$watchCollection(attr.ngStyle, function ngStyleWatchAction(newStyles, oldStyles) {
+  scope.$watch(attr.ngStyle, function ngStyleWatchAction(newStyles, oldStyles) {
     if (oldStyles && (newStyles !== oldStyles)) {
       forEach(oldStyles, function(val, style) { element.css(style, '');});
     }
     if (newStyles) element.css(newStyles);
-  });
+  }, true);
 });
 
 /**
@@ -27063,7 +27261,7 @@ var ngStyleDirective = ngDirective(function(scope, element, attr) {
  *
  * @scope
  * @priority 1200
- * @param {*} ngSwitch|on expression to match against <tt>ng-switch-when</tt>.
+ * @param {*} ngSwitch|on expression to match against <code>ng-switch-when</code>.
  * On child elements add:
  *
  * * `ngSwitchWhen`: the case statement to match against. If match then this
@@ -27080,7 +27278,7 @@ var ngStyleDirective = ngDirective(function(scope, element, attr) {
       <div ng-controller="ExampleController">
         <select ng-model="selection" ng-options="item for item in items">
         </select>
-        <tt>selection={{selection}}</tt>
+        <code>selection={{selection}}</code>
         <hr/>
         <div class="animate-switch-container"
           ng-switch on="selection">
@@ -27661,7 +27859,7 @@ var selectDirective = ['$compile', '$parse', function($compile,   $parse) {
             selectElement.val(viewValue);
             if (viewValue === '') emptyOption.prop('selected', true); // to make IE9 happy
           } else {
-            if (isUndefined(viewValue) && emptyOption) {
+            if (viewValue == null && emptyOption) {
               selectElement.val('');
             } else {
               selectCtrl.renderUnknownOption(viewValue);
@@ -28234,8 +28432,8 @@ var minlengthDirective = function() {
 })(window, document);
 
 !window.angular.$$csp() && window.angular.element(document).find('head').prepend('<style type="text/css">@charset "UTF-8";[ng\\:cloak],[ng-cloak],[data-ng-cloak],[x-ng-cloak],.ng-cloak,.x-ng-cloak,.ng-hide:not(.ng-hide-animate){display:none !important;}ng\\:form{display:block;}</style>');;/**
- * @license AngularJS v1.3.15
- * (c) 2010-2014 Google, Inc. http://angularjs.org
+ * @license AngularJS v1.4.0
+ * (c) 2010-2015 Google, Inc. http://angularjs.org
  * License: MIT
  */
 (function(window, angular, undefined) {'use strict';
@@ -28451,88 +28649,101 @@ ngAriaModule.directive('ngShow', ['$aria', function($aria) {
     restrict: 'A',
     require: '?ngModel',
     priority: 200, //Make sure watches are fired after any other directives that affect the ngModel value
-    link: function(scope, elem, attr, ngModel) {
+    compile: function(elem, attr) {
       var shape = getShape(attr, elem);
-      var needsTabIndex = shouldAttachAttr('tabindex', 'tabindex', elem);
 
-      function ngAriaWatchModelValue() {
-        return ngModel.$modelValue;
-      }
+      return {
+        pre: function(scope, elem, attr, ngModel) {
+          if (shape === 'checkbox' && attr.type !== 'checkbox') {
+            //Use the input[checkbox] $isEmpty implementation for elements with checkbox roles
+            ngModel.$isEmpty = function(value) {
+              return value === false;
+            };
+          }
+        },
+        post: function(scope, elem, attr, ngModel) {
+          var needsTabIndex = shouldAttachAttr('tabindex', 'tabindex', elem);
 
-      function getRadioReaction() {
-        if (needsTabIndex) {
-          needsTabIndex = false;
-          return function ngAriaRadioReaction(newVal) {
-            var boolVal = (attr.value == ngModel.$viewValue);
-            elem.attr('aria-checked', boolVal);
-            elem.attr('tabindex', 0 - !boolVal);
-          };
-        } else {
-          return function ngAriaRadioReaction(newVal) {
-            elem.attr('aria-checked', (attr.value == ngModel.$viewValue));
-          };
+          function ngAriaWatchModelValue() {
+            return ngModel.$modelValue;
+          }
+
+          function getRadioReaction() {
+            if (needsTabIndex) {
+              needsTabIndex = false;
+              return function ngAriaRadioReaction(newVal) {
+                var boolVal = (attr.value == ngModel.$viewValue);
+                elem.attr('aria-checked', boolVal);
+                elem.attr('tabindex', 0 - !boolVal);
+              };
+            } else {
+              return function ngAriaRadioReaction(newVal) {
+                elem.attr('aria-checked', (attr.value == ngModel.$viewValue));
+              };
+            }
+          }
+
+          function ngAriaCheckboxReaction() {
+            elem.attr('aria-checked', !ngModel.$isEmpty(ngModel.$viewValue));
+          }
+
+          switch (shape) {
+            case 'radio':
+            case 'checkbox':
+              if (shouldAttachRole(shape, elem)) {
+                elem.attr('role', shape);
+              }
+              if (shouldAttachAttr('aria-checked', 'ariaChecked', elem)) {
+                scope.$watch(ngAriaWatchModelValue, shape === 'radio' ?
+                    getRadioReaction() : ngAriaCheckboxReaction);
+              }
+              break;
+            case 'range':
+              if (shouldAttachRole(shape, elem)) {
+                elem.attr('role', 'slider');
+              }
+              if ($aria.config('ariaValue')) {
+                if (attr.min && !elem.attr('aria-valuemin')) {
+                  elem.attr('aria-valuemin', attr.min);
+                }
+                if (attr.max && !elem.attr('aria-valuemax')) {
+                  elem.attr('aria-valuemax', attr.max);
+                }
+                if (!elem.attr('aria-valuenow')) {
+                  scope.$watch(ngAriaWatchModelValue, function ngAriaValueNowReaction(newVal) {
+                    elem.attr('aria-valuenow', newVal);
+                  });
+                }
+              }
+              break;
+            case 'multiline':
+              if (shouldAttachAttr('aria-multiline', 'ariaMultiline', elem)) {
+                elem.attr('aria-multiline', true);
+              }
+              break;
+          }
+
+          if (needsTabIndex) {
+            elem.attr('tabindex', 0);
+          }
+
+          if (ngModel.$validators.required && shouldAttachAttr('aria-required', 'ariaRequired', elem)) {
+            scope.$watch(function ngAriaRequiredWatch() {
+              return ngModel.$error.required;
+            }, function ngAriaRequiredReaction(newVal) {
+              elem.attr('aria-required', !!newVal);
+            });
+          }
+
+          if (shouldAttachAttr('aria-invalid', 'ariaInvalid', elem)) {
+            scope.$watch(function ngAriaInvalidWatch() {
+              return ngModel.$invalid;
+            }, function ngAriaInvalidReaction(newVal) {
+              elem.attr('aria-invalid', !!newVal);
+            });
+          }
         }
-      }
-
-      function ngAriaCheckboxReaction(newVal) {
-        elem.attr('aria-checked', !ngModel.$isEmpty(ngModel.$viewValue));
-      }
-
-      switch (shape) {
-        case 'radio':
-        case 'checkbox':
-          if (shouldAttachRole(shape, elem)) {
-            elem.attr('role', shape);
-          }
-          if (shouldAttachAttr('aria-checked', 'ariaChecked', elem)) {
-            scope.$watch(ngAriaWatchModelValue, shape === 'radio' ?
-                getRadioReaction() : ngAriaCheckboxReaction);
-          }
-          break;
-        case 'range':
-          if (shouldAttachRole(shape, elem)) {
-            elem.attr('role', 'slider');
-          }
-          if ($aria.config('ariaValue')) {
-            if (attr.min && !elem.attr('aria-valuemin')) {
-              elem.attr('aria-valuemin', attr.min);
-            }
-            if (attr.max && !elem.attr('aria-valuemax')) {
-              elem.attr('aria-valuemax', attr.max);
-            }
-            if (!elem.attr('aria-valuenow')) {
-              scope.$watch(ngAriaWatchModelValue, function ngAriaValueNowReaction(newVal) {
-                elem.attr('aria-valuenow', newVal);
-              });
-            }
-          }
-          break;
-        case 'multiline':
-          if (shouldAttachAttr('aria-multiline', 'ariaMultiline', elem)) {
-            elem.attr('aria-multiline', true);
-          }
-          break;
-      }
-
-      if (needsTabIndex) {
-        elem.attr('tabindex', 0);
-      }
-
-      if (ngModel.$validators.required && shouldAttachAttr('aria-required', 'ariaRequired', elem)) {
-        scope.$watch(function ngAriaRequiredWatch() {
-          return ngModel.$error.required;
-        }, function ngAriaRequiredReaction(newVal) {
-          elem.attr('aria-required', !!newVal);
-        });
-      }
-
-      if (shouldAttachAttr('aria-invalid', 'ariaInvalid', elem)) {
-        scope.$watch(function ngAriaInvalidWatch() {
-          return ngModel.$invalid;
-        }, function ngAriaInvalidReaction(newVal) {
-          elem.attr('aria-invalid', !!newVal);
-        });
-      }
+      };
     }
   };
 }])
@@ -28574,7 +28785,8 @@ ngAriaModule.directive('ngShow', ['$aria', function($aria) {
 
         if ($aria.config('bindKeypress') && !attr.ngKeypress && !isNodeOneOf(elem, nodeBlackList)) {
           elem.on('keypress', function(event) {
-            if (event.keyCode === 32 || event.keyCode === 13) {
+            var keyCode = event.which || event.keyCode;
+            if (keyCode === 32 || keyCode === 13) {
               scope.$apply(callback);
             }
 
@@ -28601,11 +28813,19 @@ ngAriaModule.directive('ngShow', ['$aria', function($aria) {
  * Angular Material Design
  * https://github.com/angular/material
  * @license MIT
- * v0.9.0-master-9110d1e
+ * v0.10.0-rc4-master-6d45f10
  */
-angular.module('ngMaterial', ["ng","ngAnimate","ngAria","material.core","material.core.gestures","material.core.theming.palette","material.core.theming","material.components.autocomplete","material.components.backdrop","material.components.bottomSheet","material.components.button","material.components.card","material.components.checkbox","material.components.chips","material.components.content","material.components.dialog","material.components.divider","material.components.gridList","material.components.icon","material.components.input","material.components.list","material.components.progressCircular","material.components.progressLinear","material.components.radioButton","material.components.select","material.components.sidenav","material.components.slider","material.components.sticky","material.components.subheader","material.components.swipe","material.components.switch","material.components.tabs","material.components.toast","material.components.toolbar","material.components.tooltip","material.components.whiteframe"]);
-(function() {
-'use strict';
+(function( window, angular, undefined ){
+"use strict";
+
+(function(){
+"use strict";
+
+angular.module('ngMaterial', ["ng","ngAnimate","ngAria","material.core","material.core.gestures","material.core.theming.palette","material.core.theming","material.components.autocomplete","material.components.backdrop","material.components.bottomSheet","material.components.button","material.components.card","material.components.checkbox","material.components.chips","material.components.content","material.components.dialog","material.components.divider","material.components.fabActions","material.components.fabSpeedDial","material.components.fabToolbar","material.components.fabTrigger","material.components.gridList","material.components.icon","material.components.input","material.components.list","material.components.menu","material.components.progressCircular","material.components.progressLinear","material.components.radioButton","material.components.select","material.components.sidenav","material.components.slider","material.components.sticky","material.components.subheader","material.components.swipe","material.components.switch","material.components.tabs","material.components.toast","material.components.toolbar","material.components.tooltip","material.components.whiteframe"]);
+})();
+(function(){
+"use strict";
+
 
 /**
  * Initialization function that validates environment
@@ -28660,9 +28880,8 @@ function rAFDecorator( $delegate ) {
 }
 
 })();
-
-(function() {
-'use strict';
+(function(){
+"use strict";
 
 angular.module('material.core')
 .factory('$mdConstant', MdConstantFactory);
@@ -28723,8 +28942,8 @@ function MdConstantFactory($$rAF, $sniffer) {
 MdConstantFactory.$inject = ["$$rAF", "$sniffer"];
 
 })();
-
 (function(){
+"use strict";
 
   angular
     .module('material.core')
@@ -28734,7 +28953,7 @@ MdConstantFactory.$inject = ["$$rAF", "$sniffer"];
             * Inject the iterator facade to easily support iteration and accessors
             * @see iterator below
             */
-           $delegate.iterator = Iterator;
+           $delegate.iterator = MdIterator;
 
            return $delegate;
          }
@@ -28747,7 +28966,7 @@ MdConstantFactory.$inject = ["$$rAF", "$sniffer"];
    * @param items Array list which this iterator will enumerate
    * @param reloop Boolean enables iterator to consider the list as an endless reloop
    */
-  function Iterator(items, reloop) {
+  function MdIterator(items, reloop) {
     var trueFn = function() { return true; };
 
     if (items && !angular.isArray(items)) {
@@ -28953,9 +29172,10 @@ MdConstantFactory.$inject = ["$$rAF", "$sniffer"];
     }
   }
 
-})();
 
+})();
 (function(){
+"use strict";
 
 angular.module('material.core')
 .factory('$mdMedia', mdMediaFactory);
@@ -29085,11 +29305,9 @@ function mdMediaFactory($mdConstant, $rootScope, $window) {
 }
 mdMediaFactory.$inject = ["$mdConstant", "$rootScope", "$window"];
 
-
 })();
-
-(function() {
-'use strict';
+(function(){
+"use strict";
 
 /*
  * This var has to be outside the angular factory, otherwise when
@@ -29097,7 +29315,7 @@ mdMediaFactory.$inject = ["$mdConstant", "$rootScope", "$window"];
  * will create its own instance of this array and the app's IDs
  * will not be unique.
  */
-var nextUniqueId = ['0','0','0'];
+var nextUniqueId = 0;
 
 angular.module('material.core')
 .factory('$mdUtil', ["$cacheFactory", "$document", "$timeout", "$q", "$window", "$mdConstant", function($cacheFactory, $document, $timeout, $q, $window, $mdConstant) {
@@ -29132,135 +29350,98 @@ angular.module('material.core')
     offsetRect: function(element, offsetParent) {
       return Util.clientRect(element, offsetParent, true);
     },
-    disableScrollAround: function(element) {
-      var parentContent = element instanceof angular.element ? element[0] : element;
-      var lastParent;
-      var disableTarget, scrollEl, useDocElement;
-      while (parentContent = this.getClosest(parentContent, 'MD-CONTENT', true)) {
-        if (isScrolling(parentContent)) {
-          disableTarget = angular.element(parentContent);
-        } else {
-          lastParent = parentContent;
-        }
+
+    // Annoying method to copy nodes to an array, thanks to IE
+    nodesToArray: function (nodes) {
+      var results = [];
+      for (var i = 0; i < nodes.length; ++i) {
+        results.push(nodes.item(i));
       }
-      if (!disableTarget) {
-        if (!lastParent ||
-          $document[0].body.scrollTop || $document[0].documentElement.scrollTop ) {
-          disableTarget = angular.element($document[0].body);
-        } else {
-          disableTarget = angular.element(lastParent);
-        }
-      }
-
-      if (disableTarget[0].nodeName == 'BODY' && $document[0].documentElement.scrollTop) {
-        scrollEl = $document[0].documentElement;
-        useDocElement = true;
-      } else {
-        scrollEl = disableTarget[0];
-      }
-
-      var heightOffset = scrollEl.scrollTop;
-      var originalWidth = scrollEl.clientWidth;
-
-      var restoreStyle = disableTarget.attr('style');
-      var disableStyle = $window.getComputedStyle(disableTarget[0]);
-      var wrapperEl = angular.element('<div class="md-virtual-scroll-container"><div class="md-virtual-scroller"></div></div>');
-      var virtualScroller = wrapperEl.children().eq(0);
-      virtualScroller.append(disableTarget[0].childNodes);
-      disableTarget.append(wrapperEl);
-      var originalScrollBarShow = originalWidth < scrollEl.clientWidth;
-
-      computeScrollbars(disableStyle);
-
-      virtualScroller.attr('layout-margin', disableTarget.attr('layout-margin'));
-      virtualScroller.css({
-        display: disableStyle.display,
-        '-webkit-flex-direction': disableStyle.webkitFlexDirection,
-        '-ms-flex-direction': disableStyle.msFlexDirection,
-        'flex-direction': disableStyle.flexDirection,
-        '-webkit-align-items': disableStyle.webkitAlignItems,
-        '-ms-flex-align': disableStyle.msFlexAlign,
-        'align-items': disableStyle.alignItems,
-        '-webkit-justify-content': disableStyle.webkitJustifyContent,
-        '-ms-flex-pack': disableStyle.msFlexPack,
-        'justify-content': disableStyle.justifyContent,
-        '-webkit-flex': disableStyle.webkitFlex,
-        '-ms-flex': disableStyle.msFlex,
-        flex: disableStyle.flex
-      });
-      if (/flex$/.test(disableStyle.display)) {
-        virtualScroller.css('height', '100%');
-      }
-
-      computeSize();
-
-      angular.element($window).on('resize', computeSize);
-
-      function computeSize() {
-        if (restoreStyle) {
-          disableTarget.attr('style', restoreStyle);
-        } else {
-          disableTarget[0].removeAttribute('style');
-        }
-        virtualScroller.css('position', 'static');
-        var computedStyle = $window.getComputedStyle(disableTarget[0]);
-        computeScrollbars(computedStyle);
-        var innerWidth = disableTarget[0].clientWidth;
-        if (computedStyle.boxSizing == 'border-box') {
-          innerWidth -= parseFloat(computedStyle.paddingLeft, 10);
-          innerWidth -= parseFloat(computedStyle.paddingRight, 10);
-        }
-        wrapperEl.css({
-          'max-width': innerWidth + 'px'
-        });
-        disableTarget.css('position', 'relative');
-        virtualScroller.css('position', 'absolute');
-      }
-
-      function computeScrollbars(computedStyle) {
-        var scrollBarsShowing = !Util.floatingScrollbars()
-            && computedStyle.overflowY != 'hidden'
-            && (
-              virtualScroller[0].clientHeight > scrollEl.clientHeight
-              || originalScrollBarShow
-            );
-
-        var scrollerOffset = -1 * (heightOffset - parseFloat(disableStyle.paddingTop, 10));
-        disableTarget.css('padding-top', '0px');
-
-        if (scrollBarsShowing) {
-          disableTarget.css('overflow-y', 'scroll');
-        }
-        virtualScroller.css('top', scrollerOffset + 'px');
-
-        var innerHeight = parseFloat(computedStyle.height, 10);
-        if (computedStyle.boxSizing == 'border-box') {
-          innerHeight -= parseFloat(computedStyle.paddingTop, 10);
-          innerHeight -= parseFloat(computedStyle.paddingBottom, 10);
-        }
-
-        wrapperEl.css('height', innerHeight + 'px');
-        return scrollBarsShowing;
-      }
-
-      function isScrolling(el) {
-        if (el instanceof angular.element) el = el[0];
-        return el.scrollHeight > el.offsetHeight;
-      }
-
-      return function restoreScroll() {
-        disableTarget.append(virtualScroller[0].childNodes);
-        wrapperEl.remove();
-        angular.element($window).off('resize', computeSize);
-        disableTarget.attr('style', restoreStyle || false);
-        if (useDocElement) {
-          $document[0].documentElement.scrollTop = heightOffset;
-        } else {
-          disableTarget[0].scrollTop = heightOffset;
-        }
-      };
+      return results;
     },
 
+    // Disables scroll around the passed element.
+    disableScrollAround: function(element) {
+      if (Util.disableScrollAround._enableScrolling) return Util.disableScrollAround._enableScrolling;
+      element = angular.element(element);
+      var body = $document[0].body,
+          restoreBody = disableBodyScroll(),
+          restoreElement = disableElementScroll();
+
+      return Util.disableScrollAround._enableScrolling = function () {
+        restoreBody();
+        restoreElement();
+        delete Util.disableScrollAround._enableScrolling;
+      };
+
+      // Creates a virtual scrolling mask to absorb touchmove, keyboard, scrollbar clicking, and wheel events
+      function disableElementScroll() {
+        var zIndex = $window.getComputedStyle(element[0]).zIndex - 1;
+        if (isNaN(zIndex)) zIndex = 99;
+        var scrollMask = angular.element(
+            '<div class="md-scroll-mask" style="z-index: ' + zIndex + '">' +
+            '  <div class="md-scroll-mask-bar"></div>' +
+            '</div>');
+        body.appendChild(scrollMask[0]);
+
+        scrollMask.on('wheel', preventDefault);
+        scrollMask.on('touchmove', preventDefault);
+        $document.on('keydown', disableKeyNav);
+
+        return function restoreScroll () {
+          scrollMask.off('wheel');
+          scrollMask.off('touchmove');
+          scrollMask[0].parentNode.removeChild(scrollMask[0]);
+          $document.off('keydown', disableKeyNav);
+          delete Util.disableScrollAround._enableScrolling;
+        };
+
+        // Prevent keypresses from elements inside the body
+        // used to stop the keypresses that could cause the page to scroll
+        // (arrow keys, spacebar, tab, etc).
+        function disableKeyNav(e) {
+          //-- temporarily removed this logic, will possibly re-add at a later date
+          return;
+          if (!element[0].contains(e.target)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }
+
+        function preventDefault(e) {
+          e.preventDefault();
+        }
+      }
+
+      // Converts the body to a position fixed block and translate it to the proper scroll
+      // position
+      function disableBodyScroll() {
+        var restoreStyle = body.getAttribute('style') || '';
+        var scrollOffset = body.scrollTop;
+
+        applyStyles(body, {
+          position: 'fixed',
+          width: '100%',
+          overflowY: 'scroll',
+          top: -scrollOffset + 'px'
+        });
+
+        return function restoreScroll() {
+          body.setAttribute('style', restoreStyle);
+          body.scrollTop = scrollOffset;
+        };
+      }
+
+      function applyStyles (el, styles) {
+        for (var key in styles) {
+          el.style[key] = styles[key];
+        }
+      }
+    },
+    enableScrolling: function () {
+      var method = this.disableScrollAround._enableScrolling;
+      method && method();
+    },
     floatingScrollbars: function() {
       if (this.floatingScrollbars.cached === undefined) {
         var tempNode = angular.element('<div style="width: 100%; z-index: -1; position: absolute; height: 35px; overflow-y: scroll"><div style="height: 60;"></div></div>');
@@ -29376,34 +29557,12 @@ angular.module('material.core')
     },
 
     /**
-     * nextUid, from angular.js.
-     * A consistent way of creating unique IDs in angular. The ID is a sequence of alpha numeric
-     * characters such as '012ABC'. The reason why we are not using simply a number counter is that
-     * the number string gets longer over time, and it can also overflow, where as the nextId
-     * will grow much slower, it is a string, and it will never overflow.
+     * Get a unique ID.
      *
-     * @returns an unique alpha-numeric string
+     * @returns {string} an unique numeric string
      */
     nextUid: function() {
-      var index = nextUniqueId.length;
-      var digit;
-
-      while(index) {
-        index--;
-        digit = nextUniqueId[index].charCodeAt(0);
-        if (digit == 57 /*'9'*/) {
-          nextUniqueId[index] = 'A';
-          return nextUniqueId.join('');
-        }
-        if (digit == 90  /*'Z'*/) {
-          nextUniqueId[index] = '0';
-        } else {
-          nextUniqueId[index] = String.fromCharCode(digit + 1);
-          return nextUniqueId.join('');
-        }
-      }
-      nextUniqueId.unshift('0');
-      return nextUniqueId.join('');
+      return '' + nextUniqueId++;
     },
 
     // Stop watchers and events from firing on a scope without destroying it,
@@ -29485,13 +29644,13 @@ angular.module('material.core')
     /**
      * Give optional properties with no value a boolean true by default
      */
-    initOptionalProperties : function (scope, attr, defaults ) {
+    initOptionalProperties: function (scope, attr, defaults ) {
        defaults = defaults || { };
        angular.forEach(scope.$$isolateBindings, function (binding, key) {
          if (binding.optional && angular.isUndefined(scope[key])) {
            var hasKey = attr.hasOwnProperty(attr.$normalize(binding.attrName));
 
-           scope[key] =  angular.isDefined(defaults[key]) ? defaults[key] : hasKey;
+           scope[key] = angular.isDefined(defaults[key]) ? defaults[key] : hasKey;
          }
        });
     }
@@ -29522,9 +29681,9 @@ angular.element.prototype.blur = angular.element.prototype.blur || function() {
 };
 
 })();
+(function(){
+"use strict";
 
-(function() {
-'use strict';
 
 angular.module('material.core')
   .service('$mdAria', AriaService);
@@ -29608,10 +29767,10 @@ function AriaService($$rAF, $log, $window) {
   }
 }
 AriaService.$inject = ["$$rAF", "$log", "$window"];
-})();
 
-(function() {
-'use strict';
+})();
+(function(){
+"use strict";
 
 angular.module('material.core')
   .service('$mdCompiler', mdCompilerService);
@@ -29748,10 +29907,10 @@ function mdCompilerService($q, $http, $injector, $compile, $controller, $templat
   };
 }
 mdCompilerService.$inject = ["$q", "$http", "$injector", "$compile", "$controller", "$templateCache"];
-})();
 
-(function (jQuery) {
-  'use strict';
+})();
+(function(){
+"use strict";
 
   var HANDLERS = {};
   /* The state of the current 'pointer'
@@ -29800,9 +29959,12 @@ mdCompilerService.$inject = ["$q", "$http", "$injector", "$compile", "$controlle
     skipClickHijack: function() {
       return forceSkipClickHijack = true;
     },
-    
-    // $get is used to build an instance of $mdGesture 
-    $get : ['$$MdGestureHandler', '$$rAF', '$timeout', function($$MdGestureHandler, $$rAF, $timeout) {
+
+    /**
+     * $get is used to build an instance of $mdGesture
+     * @ngInject
+     */
+    $get : ["$$MdGestureHandler", "$$rAF", "$timeout", function($$MdGestureHandler, $$rAF, $timeout) {
          return new MdGesture($$MdGestureHandler, $$rAF, $timeout);
     }]
   };
@@ -29811,17 +29973,19 @@ mdCompilerService.$inject = ["$q", "$http", "$injector", "$compile", "$controlle
 
   /**
    * MdGesture factory construction function
+   * @ngInject
    */
   function MdGesture($$MdGestureHandler, $$rAF, $timeout) {
     var userAgent = navigator.userAgent || navigator.vendor || window.opera;
     var isIos = userAgent.match(/ipad|iphone|ipod/i);
     var isAndroid = userAgent.match(/android/i);
+    var hasJQuery =  (typeof window.jQuery !== 'undefined') && (angular.element === window.jQuery);
 
     var self = {
       handler: addHandler,
       register: register,
       // On mobile w/out jQuery, we normally intercept clicks. Should we skip that?
-      isHijackingClicks: (isIos || isAndroid) && !jQuery && !forceSkipClickHijack
+      isHijackingClicks: (isIos || isAndroid) && !hasJQuery && !forceSkipClickHijack
     };
 
     if (self.isHijackingClicks) {
@@ -30014,6 +30178,7 @@ mdCompilerService.$inject = ["$q", "$http", "$injector", "$compile", "$controlle
       });
 
   }
+  MdGesture.$inject = ["$$MdGestureHandler", "$$rAF", "$timeout"];
 
   /**
    * MdGestureHandler
@@ -30031,8 +30196,8 @@ mdCompilerService.$inject = ["$q", "$http", "$injector", "$compile", "$controlle
     this.state = {};
   }
 
-  function MdGestureHandler($$rAF) {
-    var hasJQuery =  typeof jQuery !== 'undefined' && angular.element === jQuery;
+  function MdGestureHandler() {
+    var hasJQuery =  (typeof window.jQuery !== 'undefined') && (angular.element === window.jQuery);
 
     GestureHandler.prototype = {
       options: {},
@@ -30171,10 +30336,10 @@ mdCompilerService.$inject = ["$q", "$http", "$injector", "$compile", "$controlle
     }
 
   }
-  MdGestureHandler.$inject = ["$$rAF"];
 
   /**
    * Attach Gestures: hook document and check shouldHijack clicks
+   * @ngInject
    */
   function attachToDocument( $mdGesture, $$MdGestureHandler ) {
 
@@ -30355,10 +30520,9 @@ mdCompilerService.$inject = ["$q", "$http", "$injector", "$compile", "$controlle
       ev;
   }
 
-})(window.jQuery);
-
-(function() {
-'use strict';
+})();
+(function(){
+"use strict";
 
 angular.module('material.core')
   .provider('$$interimElement', InterimElementProvider);
@@ -30792,9 +30956,8 @@ function InterimElementProvider() {
 }
 
 })();
-
-(function() {
-  'use strict';
+(function(){
+"use strict";
 
   /**
    * @ngdoc module
@@ -30917,11 +31080,139 @@ function InterimElementProvider() {
   }
   ComponentRegistry.$inject = ["$log", "$q"];
 
-
 })();
+(function(){
+"use strict";
 
 (function() {
-'use strict';
+  'use strict';
+
+  /**
+   * @ngdoc service
+   * @name $mdButtonInkRipple
+   * @module material.core
+   *
+   * @description
+   * Provides ripple effects for md-button.  See $mdInkRipple service for all possible configuration options.
+   *
+   * @param {object=} scope Scope within the current context
+   * @param {object=} element The element the ripple effect should be applied to
+   * @param {object=} options (Optional) Configuration options to override the defaultripple configuration
+   */
+
+  angular.module('material.core')
+    .factory('$mdButtonInkRipple', MdButtonInkRipple);
+
+  function MdButtonInkRipple($mdInkRipple) {
+    return {
+      attach: attach
+    };
+
+    function attach(scope, element, options) {
+      var elementOptions = optionsForElement(element);
+      return $mdInkRipple.attach(scope, element, angular.extend(elementOptions, options));
+    };
+
+    function optionsForElement(element) {
+      if (element.hasClass('md-icon-button')) {
+        return {
+          isMenuItem: element.hasClass('md-menu-item'),
+          fitRipple: true,
+          center: true
+        };
+      } else {
+        return {
+          isMenuItem: element.hasClass('md-menu-item'),
+          dimBackground: true
+        }
+      }
+    };
+  }
+  MdButtonInkRipple.$inject = ["$mdInkRipple"];;
+})();
+
+})();
+(function(){
+"use strict";
+
+(function() {
+  'use strict';
+
+    /**
+   * @ngdoc service
+   * @name $mdCheckboxInkRipple
+   * @module material.core
+   *
+   * @description
+   * Provides ripple effects for md-checkbox.  See $mdInkRipple service for all possible configuration options.
+   *
+   * @param {object=} scope Scope within the current context
+   * @param {object=} element The element the ripple effect should be applied to
+   * @param {object=} options (Optional) Configuration options to override the defaultripple configuration
+   */
+
+  angular.module('material.core')
+    .factory('$mdCheckboxInkRipple', MdCheckboxInkRipple);
+
+  function MdCheckboxInkRipple($mdInkRipple) {
+    return {
+      attach: attach
+    };
+
+    function attach(scope, element, options) {
+      return $mdInkRipple.attach(scope, element, angular.extend({
+        center: true,
+        dimBackground: false,
+        fitRipple: true
+      }, options));
+    };
+  }
+  MdCheckboxInkRipple.$inject = ["$mdInkRipple"];;
+})();
+
+})();
+(function(){
+"use strict";
+
+(function() {
+  'use strict';
+
+  /**
+   * @ngdoc service
+   * @name $mdListInkRipple
+   * @module material.core
+   *
+   * @description
+   * Provides ripple effects for md-list.  See $mdInkRipple service for all possible configuration options.
+   *
+   * @param {object=} scope Scope within the current context
+   * @param {object=} element The element the ripple effect should be applied to
+   * @param {object=} options (Optional) Configuration options to override the defaultripple configuration
+   */
+
+  angular.module('material.core')
+    .factory('$mdListInkRipple', MdListInkRipple);
+
+  function MdListInkRipple($mdInkRipple) {
+    return {
+      attach: attach
+    };
+
+    function attach(scope, element, options) {
+      return $mdInkRipple.attach(scope, element, angular.extend({
+        center: false,
+        dimBackground: true,
+        outline: false,
+        rippleSize: 'full'
+      }, options));
+    };
+  }
+  MdListInkRipple.$inject = ["$mdInkRipple"];;
+})();
+
+})();
+(function(){
+"use strict";
 
 angular.module('material.core')
   .factory('$mdInkRipple', InkRippleService)
@@ -30930,64 +31221,25 @@ angular.module('material.core')
   .directive('mdNoBar', attrNoDirective())
   .directive('mdNoStretch', attrNoDirective());
 
-function InkRippleDirective($mdInkRipple) {
+function InkRippleDirective($mdButtonInkRipple, $mdCheckboxInkRipple) {
   return {
     controller: angular.noop,
     link: function (scope, element, attr) {
       if (attr.hasOwnProperty('mdInkRippleCheckbox')) {
-        $mdInkRipple.attachCheckboxBehavior(scope, element);
+        $mdCheckboxInkRipple.attach(scope, element);
       } else {
-        $mdInkRipple.attachButtonBehavior(scope, element);
+        $mdButtonInkRipple.attach(scope, element);
       }
     }
   };
 }
-InkRippleDirective.$inject = ["$mdInkRipple"];
+InkRippleDirective.$inject = ["$mdButtonInkRipple", "$mdCheckboxInkRipple"];
 
 function InkRippleService($window, $timeout) {
 
   return {
-    attachButtonBehavior: attachButtonBehavior,
-    attachCheckboxBehavior: attachCheckboxBehavior,
-    attachTabBehavior: attachTabBehavior,
-    attachListControlBehavior: attachListControlBehavior,
     attach: attach
   };
-
-  function attachButtonBehavior(scope, element, options) {
-    return attach(scope, element, angular.extend({
-      fullRipple: true,
-      isMenuItem: element.hasClass('md-menu-item'),
-      center: false,
-      dimBackground: true
-    }, options));
-  }
-
-  function attachCheckboxBehavior(scope, element, options) {
-    return attach(scope, element, angular.extend({
-      center: true,
-      dimBackground: false,
-      fitRipple: true
-    }, options));
-  }
-
-  function attachTabBehavior(scope, element, options) {
-    return attach(scope, element, angular.extend({
-      center: false,
-      dimBackground: true,
-      outline: false,
-      rippleSize: 'full'
-    }, options));
-  }
-
-  function attachListControlBehavior(scope, element, options) {
-    return attach(scope, element, angular.extend({
-      center: false,
-      dimBackground: true,
-      outline: false,
-      rippleSize: 'full'
-    }, options));
-  }
 
   function attach(scope, element, options) {
     if (element.controller('mdNoInk')) return angular.noop;
@@ -31346,10 +31598,50 @@ function attrNoDirective() {
     };
   };
 }
+
 })();
+(function(){
+"use strict";
 
 (function() {
-'use strict';
+  'use strict';
+
+    /**
+   * @ngdoc service
+   * @name $mdTabInkRipple
+   * @module material.core
+   *
+   * @description
+   * Provides ripple effects for md-tabs.  See $mdInkRipple service for all possible configuration options.
+   *
+   * @param {object=} scope Scope within the current context
+   * @param {object=} element The element the ripple effect should be applied to
+   * @param {object=} options (Optional) Configuration options to override the defaultripple configuration
+   */
+
+  angular.module('material.core')
+    .factory('$mdTabInkRipple', MdTabInkRipple);
+
+  function MdTabInkRipple($mdInkRipple) {
+    return {
+      attach: attach
+    };
+
+    function attach(scope, element, options) {
+      return $mdInkRipple.attach(scope, element, angular.extend({
+        center: false,
+        dimBackground: true,
+        outline: false,
+        rippleSize: 'full'
+      }, options));
+    };
+  }
+  MdTabInkRipple.$inject = ["$mdInkRipple"];;
+})();
+
+})();
+(function(){
+"use strict";
 
 angular.module('material.core.theming.palette', [])
 .constant('$mdColorPalette', {
@@ -31673,7 +31965,6 @@ angular.module('material.core.theming.palette', [])
     'contrastStrongLightColors': '300 400'
   },
   'grey': {
-    '0': '#ffffff',
     '50': '#fafafa',
     '100': '#f5f5f5',
     '200': '#eeeeee',
@@ -31712,10 +32003,10 @@ angular.module('material.core.theming.palette', [])
     'contrastStrongLightColors': '400 500'
   }
 });
-})();
 
-(function() {
-'use strict';
+})();
+(function(){
+"use strict";
 
 angular.module('material.core.theming', ['material.core.theming.palette'])
   .directive('mdTheme', ThemingDirective)
@@ -31767,10 +32058,12 @@ angular.module('material.core.theming', ['material.core.theming.palette'])
  *
  */
 
+// In memory generated CSS rules; registered by theme.name
+var GENERATED = { };
+
 // In memory storage of defined themes and color palettes (both loaded by CSS, and user specified)
 var PALETTES;
 var THEMES;
-var GENERATED;
 
 var DARK_FOREGROUND = {
   name: 'dark',
@@ -31841,7 +32134,6 @@ var VALID_HUE_VALUES = [
 function ThemingProvider($mdColorPalette) {
   PALETTES = { };
   THEMES = { };
-  GENERATED = { };
 
   var themingProvider;
   var defaultTheme = 'default';
@@ -32152,6 +32444,12 @@ function parseRules(theme, colorType, rules) {
     if (hueName !== 'default') {
       newRule = newRule.replace(themeNameRegex, '.md-' + theme.name + '-theme.md-' + hueName);
     }
+
+    // Don't apply a selector rule to the default theme, making it easier to override
+    // styles of the base-component
+    if (theme.name == 'default') {
+      newRule = newRule.replace(/\.md-default-theme/g, '');
+    }
     generatedRules.push(newRule);
   });
 
@@ -32161,15 +32459,15 @@ function parseRules(theme, colorType, rules) {
 // Generate our themes at run time given the state of THEMES and PALETTES
 function generateThemes($injector) {
 
-  // Insert our newly minted styles into the DOM
   var head = document.getElementsByTagName('head')[0];
-  if (!head) return;
-  var firstChild = head.firstElementChild;
-  if (!firstChild) return;
+  var firstChild = head ? head.firstElementChild : null;
   var themeCss = $injector.has('$MD_THEME_CSS') ? $injector.get('$MD_THEME_CSS') : '';
 
-    // Expose contrast colors for palettes to ensure that text is always readable
-    angular.forEach(PALETTES, sanitizePalette);
+  if ( !firstChild ) return;
+  if (themeCss.length === 0) return; // no rules, so no point in running this expensive task
+
+  // Expose contrast colors for palettes to ensure that text is always readable
+  angular.forEach(PALETTES, sanitizePalette);
 
   // MD_THEME_CSS is a string generated by the build process that includes all the themable
   // components as templates
@@ -32337,6 +32635,8 @@ function colorToRgbaArray(clr) {
 }
 
 function rgba(rgbArray, opacity) {
+  if ( !rgbArray ) return "rgb('0,0,0')";
+
   if (rgbArray.length == 4) {
     rgbArray = angular.copy(rgbArray);
     opacity ? rgbArray.pop() : opacity = rgbArray.pop();
@@ -32346,7 +32646,10 @@ function rgba(rgbArray, opacity) {
     'rgb(' + rgbArray.join(',') + ')';
 }
 
+
 })();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -32359,6 +32662,10 @@ angular.module('material.components.autocomplete', [
   'material.core',
   'material.components.icon'
 ]);
+
+})();
+(function(){
+"use strict";
 
 /*
  * @ngdoc module
@@ -32388,6 +32695,10 @@ function BackdropDirective($mdTheming) {
   return $mdTheming;
 }
 BackdropDirective.$inject = ["$mdTheming"];
+
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -32646,6 +32957,10 @@ function MdBottomSheetProvider($$interimElementProvider) {
 }
 MdBottomSheetProvider.$inject = ["$$interimElementProvider"];
 
+})();
+(function(){
+"use strict";
+
 /**
  * @ngdoc module
  * @name material.components.button
@@ -32668,10 +32983,8 @@ angular
  * `<md-button>` is a button directive with optional ink ripples (default enabled).
  *
  * If you supply a `href` or `ng-href` attribute, it will become an `<a>` element. Otherwise, it will
- * become a `<button>` element.
- *
- * As per the [material design spec](http://www.google.com/design/spec/style/color.html#color-ui-color-application)
- * the FAB button is in the accent color by default. The primary color palette may be used with
+ * become a `<button>` element. As per the [Material Design specifications](http://www.google.com/design/spec/style/color.html#color-ui-color-application)
+ * the FAB button background is filled with the accent color [by default]. The primary color palette may be used with
  * the `md-primary` class.
  *
  * @param {boolean=} md-no-ink If present, disable ripple ink effects.
@@ -32681,31 +32994,37 @@ angular
  * If no default text is found, a warning will be logged.
  *
  * @usage
+ *
+ * Regular buttons:
+ *
  * <hljs lang="html">
+ *  <md-button> Flat Button </md-button>
+ *  <md-button href="http://google.com"> Flat link </md-button>
+ *  <md-button class="md-raised"> Raised Button </md-button>
+ *  <md-button ng-disabled="true"> Disabled Button </md-button>
  *  <md-button>
- *    Flat Button
+ *    <md-icon md-svg-src="your/icon.svg"></md-icon>
+ *    Register Now
  *  </md-button>
- *  <md-button href="http://google.com">
- *    Flat link
- *  </md-button>
- *  <md-button class="md-raised">
- *    Raised Button
- *  </md-button>
- *  <md-button ng-disabled="true">
- *    Disabled Button
- *  </md-button>
+ * </hljs>
+ *
+ * FAB buttons:
+ *
+ * <hljs lang="html">
  *  <md-button class="md-fab" aria-label="FAB">
  *    <md-icon md-svg-src="your/icon.svg"></md-icon>
  *  </md-button>
+ *  <!-- mini-FAB -->
  *  <md-button class="md-fab md-mini" aria-label="Mini FAB">
  *    <md-icon md-svg-src="your/icon.svg"></md-icon>
  *  </md-button>
+ *  <!-- Button with SVG Icon -->
  *  <md-button class="md-icon-button" aria-label="Custom Icon Button">
  *    <md-icon md-svg-icon="path/to/your.svg"></md-icon>
  *  </md-button>
  * </hljs>
  */
-function MdButtonDirective($mdInkRipple, $mdTheming, $mdAria, $timeout) {
+function MdButtonDirective($mdButtonInkRipple, $mdTheming, $mdAria, $timeout) {
 
   return {
     restrict: 'EA',
@@ -32718,7 +33037,7 @@ function MdButtonDirective($mdInkRipple, $mdTheming, $mdAria, $timeout) {
   function isAnchor(attr) {
     return angular.isDefined(attr.href) || angular.isDefined(attr.ngHref) || angular.isDefined(attr.ngLink) || angular.isDefined(attr.uiSref);
   }
-  
+
   function getTemplate(element, attr) {
     return isAnchor(attr) ?
            '<a class="md-button" ng-transclude></a>' :
@@ -32728,14 +33047,14 @@ function MdButtonDirective($mdInkRipple, $mdTheming, $mdAria, $timeout) {
   function postLink(scope, element, attr) {
     var node = element[0];
     $mdTheming(element);
-    $mdInkRipple.attachButtonBehavior(scope, element);
+    $mdButtonInkRipple.attach(scope, element);
 
     var elementHasText = node.textContent.trim();
     if (!elementHasText) {
       $mdAria.expect(element, 'aria-label');
     }
 
-    // For anchor elements, we have to set tabindex manually when the 
+    // For anchor elements, we have to set tabindex manually when the
     // element is disabled
     if (isAnchor(attr) && angular.isDefined(attr.ngDisabled) ) {
       scope.$watch(attr.ngDisabled, function(isDisabled) {
@@ -32766,7 +33085,11 @@ function MdButtonDirective($mdInkRipple, $mdTheming, $mdAria, $timeout) {
   }
 
 }
-MdButtonDirective.$inject = ["$mdInkRipple", "$mdTheming", "$mdAria", "$timeout"];
+MdButtonDirective.$inject = ["$mdButtonInkRipple", "$mdTheming", "$mdAria", "$timeout"];
+
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -32842,6 +33165,10 @@ function mdCardDirective($mdTheming) {
   };
 }
 mdCardDirective.$inject = ["$mdTheming"];
+
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -33000,6 +33327,10 @@ function MdCheckboxDirective(inputDirective, $mdInkRipple, $mdAria, $mdConstant,
 }
 MdCheckboxDirective.$inject = ["inputDirective", "$mdInkRipple", "$mdAria", "$mdConstant", "$mdTheming", "$mdUtil", "$timeout"];
 
+})();
+(function(){
+"use strict";
+
 /**
  * @ngdoc module
  * @name material.components.chips
@@ -33011,6 +33342,10 @@ angular.module('material.components.chips', [
   'material.core',
   'material.components.autocomplete'
 ]);
+
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -33086,6 +33421,10 @@ function iosScrollFix(node) {
     }
   });
 }
+
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -33218,14 +33557,14 @@ MdDialogDirective.$inject = ["$$rAF", "$mdTheming"];
  *          },
  *          controller: DialogController
  *       });
- *       function DialogController(scope, $mdDialog, items) {
- *         scope.items = items;
- *         scope.closeDialog = function() {
+ *       function DialogController($scope, $mdDialog, items) {
+ *         $scope.items = items;
+ *         $scope.closeDialog = function() {
  *           $mdDialog.hide();
  *         }
  *       }
  *     }
- *
+ *   }
  * })(angular);
  * </hljs>
  *
@@ -33447,6 +33786,8 @@ MdDialogDirective.$inject = ["$$rAF", "$mdTheming"];
  * Hide an existing dialog and resolve the promise returned from `$mdDialog.show()`.
  *
  * @param {*=} response An argument for the resolved promise.
+ *
+ * @returns {promise} A promise that is resolved when the dialog has been closed.
  */
 
 /**
@@ -33457,6 +33798,8 @@ MdDialogDirective.$inject = ["$$rAF", "$mdTheming"];
  * Hide an existing dialog and reject the promise returned from `$mdDialog.show()`.
  *
  * @param {*=} response An argument for the rejected promise.
+ *
+ * @returns {promise} A promise that is resolved when the dialog has been closed.
  */
 
 function MdDialogProvider($$interimElementProvider) {
@@ -33484,7 +33827,7 @@ function MdDialogProvider($$interimElementProvider) {
     return {
       template: [
         '<md-dialog md-theme="{{ dialog.theme }}" aria-label="{{ dialog.ariaLabel }}">',
-          '<md-dialog-content role="document" tabIndex="0">',
+          '<md-dialog-content role="document" tabIndex="-1">',
             '<h2 class="md-title">{{ dialog.title }}</h2>',
             '<p>{{ dialog.content }}</p>',
           '</md-dialog-content>',
@@ -33786,6 +34129,10 @@ function MdDialogProvider($$interimElementProvider) {
 }
 MdDialogProvider.$inject = ["$$interimElementProvider"];
 
+})();
+(function(){
+"use strict";
+
 /**
  * @ngdoc module
  * @name material.components.divider
@@ -33821,6 +34168,551 @@ function MdDividerDirective($mdTheming) {
   };
 }
 MdDividerDirective.$inject = ["$mdTheming"];
+
+})();
+(function(){
+"use strict";
+
+(function() {
+  'use strict';
+
+  angular
+    .module('material.components.fabActions', ['material.core'])
+    .directive('mdFabActions', MdFabActionsDirective);
+
+  /**
+   * @ngdoc directive
+   * @name mdFabActions
+   * @module material.components.fabSpeedDial
+   *
+   * @restrict E
+   *
+   * @description
+   * The `<md-fab-actions>` directive is used inside of a `<md-fab-speed-dial>` or
+   * `<md-fab-toolbar>` directive to mark the an element (or elements) as the actions and setup the
+   * proper event listeners.
+   *
+   * @usage
+   * See the `<md-fab-speed-dial>` or `<md-fab-toolbar>` directives for example usage.
+   */
+  function MdFabActionsDirective() {
+    return {
+      restrict: 'E',
+
+      require: ['^?mdFabSpeedDial', '^?mdFabToolbar'],
+
+      link: function(scope, element, attributes, controllers) {
+        // Grab whichever parent controller is used
+        var controller = controllers[0] || controllers[1];
+
+        // Make the children open/close their parent directive
+        if (controller) {
+          angular.forEach(element.children(), function(child) {
+            angular.element(child).on('focus', controller.open);
+            angular.element(child).on('blur', controller.close);
+          });
+        }
+
+        // After setting up the listeners, wrap every child in a new div and add a class that we can
+        // scale/fling independently
+        element.children().wrap('<div class="md-fab-action-item">');
+      }
+    }
+  }
+
+})();
+})();
+(function(){
+"use strict";
+
+(function() {
+  'use strict';
+
+  angular
+    .module('material.components.fabSpeedDial', [
+      'material.core',
+      'material.components.fabTrigger',
+      'material.components.fabActions'
+    ])
+    .directive('mdFabSpeedDial', MdFabSpeedDialDirective)
+    .animation('.md-fling', MdFabSpeedDialFlingAnimation)
+    .animation('.md-scale', MdFabSpeedDialScaleAnimation);
+
+  /**
+   * @ngdoc directive
+   * @name mdFabSpeedDial
+   * @module material.components.fabSpeedDial
+   *
+   * @restrict E
+   *
+   * @description
+   * The `<md-fab-speed-dial>` directive is used to present a series of popup elements (usually
+   * `<md-button>`s) for quick access to common actions.
+   *
+   * There are currently two animations available by applying one of the following classes to
+   * the component:
+   *
+   *  - `md-fling` - The speed dial items appear from underneath the trigger and move into their
+   *    appropriate positions.
+   *  - `md-scale` - The speed dial items appear in their proper places by scaling from 0% to 100%.
+   *
+   * @usage
+   * <hljs lang="html">
+   * <md-fab-speed-dial direction="up" class="md-fling">
+   *   <md-fab-trigger>
+   *     <md-button aria-label="Add..."><md-icon icon="/img/icons/plus.svg"></md-icon></md-button>
+   *   </md-fab-trigger>
+   *
+   *   <md-fab-actions>
+   *     <md-button aria-label="Add User">
+   *       <md-icon icon="/img/icons/user.svg"></md-icon>
+   *     </md-button>
+   *
+   *     <md-button aria-label="Add Group">
+   *       <md-icon icon="/img/icons/group.svg"></md-icon>
+   *     </md-button>
+   *   </md-fab-actions>
+   * </md-fab-speed-dial>
+   * </hljs>
+   *
+   * @param {string=} md-direction From which direction you would like the speed dial to appear
+   * relative to the trigger element.
+   * @param {expression=} md-open Programmatically control whether or not the speed-dial is visible.
+   */
+  function MdFabSpeedDialDirective() {
+    FabSpeedDialController.$inject = ["$scope", "$element", "$animate"];
+    return {
+      restrict: 'E',
+
+      scope: {
+        direction: '@?mdDirection',
+        isOpen: '=?mdOpen'
+      },
+
+      bindToController: true,
+      controller: FabSpeedDialController,
+      controllerAs: 'vm',
+
+      link: FabSpeedDialLink
+    };
+
+    function FabSpeedDialLink(scope, element) {
+      // Prepend an element to hold our CSS variables so we can use them in the animations below
+      element.prepend('<div class="md-css-variables"></div>');
+    }
+
+    function FabSpeedDialController($scope, $element, $animate) {
+      var vm = this;
+
+      // Define our open/close functions
+      // Note: Used by fabTrigger and fabActions directives
+      vm.open = function() {
+        $scope.$apply('vm.isOpen = true');
+      };
+
+      vm.close = function() {
+        $scope.$apply('vm.isOpen = false');
+      };
+
+      setupDefaults();
+      setupListeners();
+      setupWatchers();
+
+      // Set our default variables
+      function setupDefaults() {
+        // Set the default direction to 'down' if none is specified
+        vm.direction = vm.direction || 'down';
+
+        // Set the default to be closed
+        vm.isOpen = vm.isOpen || false;
+      }
+
+      // Setup our event listeners
+      function setupListeners() {
+        $element.on('mouseenter', vm.open);
+        $element.on('mouseleave', vm.close);
+      }
+
+      // Setup our watchers
+      function setupWatchers() {
+        // Watch for changes to the direction and update classes/attributes
+        $scope.$watch('vm.direction', function(newDir, oldDir) {
+          // Add the appropriate classes so we can target the direction in the CSS
+          $animate.removeClass($element, 'md-' + oldDir);
+          $animate.addClass($element, 'md-' + newDir);
+        });
+
+
+        // Watch for changes to md-open
+        $scope.$watch('vm.isOpen', function(isOpen) {
+          var toAdd = isOpen ? 'md-is-open' : '';
+          var toRemove = isOpen ? '' : 'md-is-open';
+
+          $animate.setClass($element, toAdd, toRemove);
+        });
+      }
+    }
+  }
+
+  function MdFabSpeedDialFlingAnimation() {
+    function runAnimation(element) {
+      var el = element[0];
+      var ctrl = element.controller('mdFabSpeedDial');
+      var items = el.querySelectorAll('.md-fab-action-item');
+
+      // Grab our element which stores CSS variables
+      var variablesElement = el.querySelector('.md-css-variables');
+
+      // Setup JS variables based on our CSS variables
+      var startZIndex = variablesElement.style.zIndex;
+
+      // Always reset the items to their natural position/state
+      angular.forEach(items, function(item, index) {
+        var styles = item.style;
+
+        styles.transform = '';
+        styles.transitionDelay = '';
+        styles.opacity = 1;
+
+        // Make the items closest to the trigger have the highest z-index
+        item.style.zIndex = (items.length - index) + startZIndex;
+      });
+
+      // If the control is closed, hide the items behind the trigger
+      if (!ctrl.isOpen) {
+        angular.forEach(items, function(item, index) {
+          var newPosition, axis;
+
+          switch (ctrl.direction) {
+            case 'up':
+              newPosition = item.scrollHeight * (index + 1);
+              axis = 'Y';
+              break;
+            case 'down':
+              newPosition = -item.scrollHeight * (index + 1);
+              axis = 'Y';
+              break;
+            case 'left':
+              newPosition = item.scrollWidth * (index + 1);
+              axis = 'X';
+              break;
+            case 'right':
+              newPosition = -item.scrollWidth * (index + 1);
+              axis = 'X';
+              break;
+          }
+
+          item.style.transform = 'translate' + axis + '(' + newPosition + 'px)';
+        });
+      }
+    }
+
+    return {
+      addClass: function(element, className, done) {
+        if (element.hasClass('md-fling')) {
+          runAnimation(element);
+        }
+      },
+      removeClass: function(element, className, done) {
+        runAnimation(element);
+      }
+    }
+  }
+
+  function MdFabSpeedDialScaleAnimation() {
+    var delay = 65;
+
+    function runAnimation(element) {
+      var el = element[0];
+      var ctrl = element.controller('mdFabSpeedDial');
+      var items = el.querySelectorAll('.md-fab-action-item');
+
+      // Always reset the items to their natural position/state
+      angular.forEach(items, function(item, index) {
+        var styles = item.style,
+          offsetDelay = index * delay;
+
+        styles.opacity = ctrl.isOpen ? 1 : 0;
+        styles.transform = ctrl.isOpen ? 'scale(1)' : 'scale(0)';
+        styles.transitionDelay = (ctrl.isOpen ?  offsetDelay : (items.length - offsetDelay)) + 'ms';
+      });
+    }
+
+    return {
+      addClass: function(element, className, done) {
+        runAnimation(element);
+      },
+
+      removeClass: function(element, className, done) {
+        runAnimation(element);
+      }
+    }
+  }
+})();
+
+})();
+(function(){
+"use strict";
+
+(function() {
+  'use strict';
+
+  angular
+    .module('material.components.fabToolbar', [
+      'material.core',
+      'material.components.fabTrigger',
+      'material.components.fabActions'
+    ])
+    .directive('mdFabToolbar', MdFabToolbarDirective)
+    .animation('.md-fab-toolbar', MdFabToolbarAnimation);
+
+  /**
+   * @ngdoc directive
+   * @name mdFabToolbar
+   * @module material.components.fabToolbar
+   *
+   * @restrict E
+   *
+   * @description
+   *
+   * The `<md-fab-toolbar>` directive is used present a toolbar of elements (usually `<md-button>`s)
+   * for quick access to common actions when a floating action button is activated (via hover or
+   * keyboard navigation).
+   *
+   * @usage
+   *
+   * <hljs lang="html">
+   * <md-fab-toolbar>
+   *   <md-fab-trigger>
+   *     <md-button aria-label="Add..."><md-icon icon="/img/icons/plus.svg"></md-icon></md-button>
+   *   </md-fab-trigger>
+   *
+   *   <md-fab-actions>
+   *     <md-button aria-label="Add User">
+   *       <md-icon icon="/img/icons/user.svg"></md-icon>
+   *     </md-button>
+   *
+   *     <md-button aria-label="Add Group">
+   *       <md-icon icon="/img/icons/group.svg"></md-icon>
+   *     </md-button>
+   *   </md-fab-actions>
+   * </md-fab-toolbar>
+   * </hljs>
+   *
+   * @param {expression=} md-open Programmatically control whether or not the toolbar is visible.
+   */
+  function MdFabToolbarDirective() {
+    FabToolbarController.$inject = ["$scope", "$element", "$animate"];
+    return {
+      restrict: 'E',
+      transclude: true,
+      template:
+        '<div class="md-fab-toolbar-wrapper">' +
+        '  <div class="md-fab-toolbar-content" ng-transclude></div>' +
+        '</div>',
+
+      scope: {
+        isOpen: '=?mdOpen'
+      },
+
+      bindToController: true,
+      controller: FabToolbarController,
+      controllerAs: 'vm',
+
+      link: link
+    };
+
+    function FabToolbarController($scope, $element, $animate) {
+      var vm = this;
+
+      // Set the default to be closed
+      vm.isOpen = vm.isOpen || false;
+
+      vm.open = function() {
+        vm.isOpen = true;
+        $scope.$apply();
+      };
+
+      vm.close = function() {
+        vm.isOpen = false;
+        $scope.$apply();
+      };
+
+      // Add our class so we can trigger the animation on start
+      $element.addClass('md-fab-toolbar');
+
+      // Setup some mouse events so the hover effect can be triggered
+      // anywhere over the toolbar
+      $element.on('mouseenter', vm.open);
+      $element.on('mouseleave', vm.close);
+
+      // Watch for changes to md-open and toggle our class
+      $scope.$watch('vm.isOpen', function(isOpen) {
+        var toAdd = isOpen ? 'md-is-open' : '';
+        var toRemove = isOpen ? '' : 'md-is-open';
+
+        $animate.setClass($element, toAdd, toRemove);
+      });
+    }
+
+    function link(scope, element, attributes) {
+      // Don't allow focus on the trigger
+      element.find('md-fab-trigger').find('button').attr('tabindex', '-1');
+
+      // Prepend the background element to the trigger's button
+      element.find('md-fab-trigger').find('button')
+        .prepend('<div class="md-fab-toolbar-background"></div>');
+    }
+  }
+
+  function MdFabToolbarAnimation() {
+    var originalIconDelay;
+
+    function runAnimation(element, className, done) {
+      var el = element[0];
+      var ctrl = element.controller('mdFabToolbar');
+
+      // Grab the relevant child elements
+      var backgroundElement = el.querySelector('.md-fab-toolbar-background');
+      var triggerElement = el.querySelector('md-fab-trigger button');
+      var iconElement = el.querySelector('md-fab-trigger button md-icon');
+      var actions = element.find('md-fab-actions').children();
+
+      // If we have both elements, use them to position the new background
+      if (triggerElement && backgroundElement) {
+        // Get our variables
+        var color = window.getComputedStyle(triggerElement).getPropertyValue('background-color');
+        var width = el.offsetWidth;
+        var height = el.offsetHeight;
+
+        // Make a square
+        var scale = width * 2;
+
+        // Set some basic styles no matter what animation we're doing
+        backgroundElement.style.backgroundColor = color;
+        backgroundElement.style.borderRadius = width + 'px';
+
+        // If we're open
+        if (ctrl.isOpen) {
+
+          // Set the width/height to take up the full toolbar width
+          backgroundElement.style.width = scale + 'px';
+          backgroundElement.style.height = scale + 'px';
+
+          // Set the top/left to move up/left (or right) by the scale width/height
+          backgroundElement.style.top = -(scale / 2) + 'px';
+
+          if (element.hasClass('md-left')) {
+            backgroundElement.style.left = -(scale / 2) + 'px';
+            backgroundElement.style.right = null;
+          }
+
+          if (element.hasClass('md-right')) {
+            backgroundElement.style.right = -(scale / 2) + 'px';
+            backgroundElement.style.left = null;
+          }
+
+          // Set the next close animation to have the proper delays
+          backgroundElement.style.transitionDelay = '0ms';
+          iconElement.style.transitionDelay = '.3s';
+
+          // Apply a transition delay to actions
+          angular.forEach(actions, function(action, index) {
+            action.style.transitionDelay = (actions.length - index) * 25 + 'ms';
+          });
+        } else {
+          // Otherwise, set the width/height to the trigger's width/height
+          backgroundElement.style.width = triggerElement.offsetWidth + 'px';
+          backgroundElement.style.height = triggerElement.offsetHeight + 'px';
+
+          // Reset the position
+          backgroundElement.style.top = '0px';
+
+          if (element.hasClass('md-left')) {
+            backgroundElement.style.left = '0px';
+            backgroundElement.style.right = null;
+          }
+
+          if (element.hasClass('md-right')) {
+            backgroundElement.style.right = '0px';
+            backgroundElement.style.left = null;
+          }
+
+          // Set the next open animation to have the proper delays
+          backgroundElement.style.transitionDelay = '200ms';
+          iconElement.style.transitionDelay = '0ms';
+
+          // Apply a transition delay to actions
+          angular.forEach(actions, function(action, index) {
+            action.style.transitionDelay = (index * 25) + 'ms';
+          });
+        }
+      }
+    }
+
+    return {
+      addClass: function(element, className, done) {
+        runAnimation(element, className, done);
+      },
+
+      removeClass: function(element, className, done) {
+        runAnimation(element, className, done);
+      }
+    }
+  }
+})();
+})();
+(function(){
+"use strict";
+
+(function() {
+  'use strict';
+
+  angular
+    .module('material.components.fabTrigger', [ 'material.core' ])
+    .directive('mdFabTrigger', MdFabTriggerDirective);
+
+  /**
+   * @ngdoc directive
+   * @name mdFabTrigger
+   * @module material.components.fabSpeedDial
+   *
+   * @restrict E
+   *
+   * @description
+   * The `<md-fab-trigger>` directive is used inside of a `<md-fab-speed-dial>` or
+   * `<md-fab-toolbar>` directive to mark the an element (or elements) as the trigger and setup the
+   * proper event listeners.
+   *
+   * @usage
+   * See the `<md-fab-speed-dial>` or `<md-fab-toolbar>` directives for example usage.
+   */
+  function MdFabTriggerDirective() {
+    return {
+      restrict: 'E',
+
+      require: ['^?mdFabSpeedDial', '^?mdFabToolbar'],
+
+      link: function(scope, element, attributes, controllers) {
+        // Grab whichever parent controller is used
+        var controller = controllers[0] || controllers[1];
+
+        // Make the children open/close their parent directive
+        if (controller) {
+          angular.forEach(element.children(), function(child) {
+            angular.element(child).on('focus', controller.open);
+            angular.element(child).on('blur', controller.close);
+          });
+        }
+      }
+    }
+  }
+})();
+
+
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -34575,6 +35467,10 @@ function GridTileCaptionDirective() {
   };
 }
 
+})();
+(function(){
+"use strict";
+
 /**
  * @ngdoc module
  * @name material.components.icon
@@ -34594,43 +35490,140 @@ angular.module('material.components.icon', [
  * @restrict E
  *
  * @description
- * The `md-icon` directive is an markup element useful for showing an icon based on a font-face
- * or a SVG. Both external SVGs (via URLs) or cached SVG from icon sets can be
- * easily loaded and used.
+ * The `<md-icon>` directive is an markup element useful for showing an icon based on a font-icon
+ * or a SVG. Icons are view-only elements that should not be used directly as buttons; instead nest a `<md-icon>`
+ * inside a `md-button` to add hover and click features.
  *
- * @param {string} md-svg-src String URL [or expression ] used to load, cache, and display an external SVG.
- * @param {string} md-svg-icon String name used for lookup of the icon from the internal cache; interpolated strings or
+ * When using SVGs, both external SVGs (via URLs) or sets of SVGs [from icon sets] can be
+ * easily loaded and used.When use font-icons, developers must following three (3) simple steps:
+ *
+ * <ol>
+ * <li>Load the font library. e.g.<br/>
+ *    &lt;link href="https://fonts.googleapis.com/icon?family=Material+Icons"
+ *    rel="stylesheet"&gt;
+ * </li>
+ * <li> Use either (a) font-icon class names or (b) font ligatures to render the font glyph by using its textual name</li>
+ * <li> Use &lt;md-icon md-font-icon="classname" /&gt; or <br/>
+ *     use &lt;md-icon md-font-set="font library classname or alias"&gt; textual_name &lt;/md-icon&gt; or <br/>
+ *     use &lt;md-icon md-font-set="font library classname or alias"&gt; numerical_character_reference &lt;/md-icon&gt;
+ * </li>
+ * </ol>
+ *
+ * Full details for these steps can be found:
+ *
+ * <ul>
+ * <li>http://google.github.io/material-design-icons/</li>
+ * <li>http://google.github.io/material-design-icons/#icon-font-for-the-web</li>
+ * </ul>
+ *
+ * The Material Design icon style <code>.material-icons</code> and the icon font references are published in
+ * Material Design Icons:
+ *
+ * <ul>
+ * <li>http://www.google.com/design/icons/</li>
+ * <li>https://www.google.com/design/icons/#ic_accessibility</li>
+ * </ul>
+ *
+ * <h2 id="material_design_icons">Material Design Icons</h2>
+ * Using the Material Design Icon-Selector, developers can easily and quickly search for a Material Design font-icon and
+ * determine its textual name and character reference code. Click on any icon to see the slide-up information
+ * panel with details regarding a SVG download or information on the font-icon usage.
+ *
+ * <a href="https://www.google.com/design/icons/#ic_accessibility" target="_blank" style="border-bottom:none;">
+ * <img src="https://cloud.githubusercontent.com/assets/210413/7902490/fe8dd14c-0780-11e5-98fb-c821cc6475e6.png"
+ *      aria-label="Material Design Icon-Selector" style="max-width:75%;padding-left:10%">
+ * </a>
+ *
+ * <span class="image_caption">
+ *  Click on the image above to link to the
+ *  <a href="https://www.google.com/design/icons/#ic_accessibility" target="_blank">Material Design Icon-Selector</a>.
+ * </span>
+ *
+ * @param {string} md-font-icon Name of CSS icon associated with the font-face will be used
+ * to render the icon. Requires the fonts and the named CSS styles to be preloaded.
+ * @param {string} md-font-set CSS style name associated with the font library; which will be assigned as
+ * the class for the font-icon ligature. This value may also be an alias that is used to lookup the classname;
+ * internally use `$mdIconProvider.fontSet(<alias>)` to determine the style name.
+ * @param {string} md-svg-src URL [or expression ] used to load, cache, and display an external SVG.
+ * @param {string} md-svg-icon Name used for lookup of the icon from the internal cache; interpolated strings or
  * expressions may also be used. Specific set names can be used with the syntax `<set name>:<icon name>`.<br/><br/>
  * To use icon sets, developers are required to pre-register the sets using the `$mdIconProvider` service.
- * @param {string} md-font-icon String name of CSS icon associated with the font-face will be used
- * to render the icon. Requires the fonts and the named CSS styles to be preloaded.
- * @param {string=} alt Labels icon for accessibility. If an empty string is provided, icon
- * will be hidden from accessibility layer with `aria-hidden="true"`. If there's no alt on the icon
+ * @param {string=} aria-label Labels icon for accessibility. If an empty string is provided, icon
+ * will be hidden from accessibility layer with `aria-hidden="true"`. If there's no aria-label on the icon
  * nor a label on the parent element, a warning will be logged to the console.
  *
  * @usage
+ * When using SVGs:
  * <hljs lang="html">
- *  <md-icon md-font-icon="android"          alt="android " ></md-icon>
- *  <md-icon md-svg-icon="action:android"    alt="android " ></md-icon>
- *  <md-icon md-svg-src="/android.svg"       alt="android " ></md-icon>
- *  <md-icon md-svg-src="{{ getAndroid() }}" alt="android " ></md-icon>
+ *
+ *  <!-- Icon ID; may contain optional icon set prefix; icons must registered using $mdIconProvider -->
+ *  <md-icon md-svg-icon="social:android"    aria-label="android " ></md-icon>
+ *
+ *  <!-- Icon urls; may be preloaded in templateCache -->
+ *  <md-icon md-svg-src="/android.svg"       aria-label="android " ></md-icon>
+ *  <md-icon md-svg-src="{{ getAndroid() }}" aria-label="android " ></md-icon>
+ *
  * </hljs>
+ *
+ * Use the <code>$mdIconProvider</code> to configure your application with
+ * svg iconsets.
+ *
+ * <hljs lang="js">
+ *  angular.module('appSvgIconSets', ['ngMaterial'])
+ *    .controller('DemoCtrl', function($scope) {})
+ *    .config(function($mdIconProvider) {
+ *      $mdIconProvider
+ *         .iconSet('social', 'img/icons/sets/social-icons.svg', 24)
+ *         .defaultIconSet('img/icons/sets/core-icons.svg', 24);
+ *     });
+ * </hljs>
+ *
+ *
+ * When using Font Icons with classnames:
+ * <hljs lang="html">
+ *
+ *  <md-icon md-font-icon="android" aria-label="android" ></md-icon>
+ *  <md-icon class="icon_home"      aria-label="Home"    ></md-icon>
+ *
+ * </hljs>
+ *
+ * When using Material Font Icons with ligatures:
+ * <hljs lang="html">
+ *  <!-- For Material Design Icons -->
+ *  <!-- The class '.material-icons' is auto-added. -->
+ *  <md-icon> face </md-icon>
+ *  <md-icon class="md-light md-48"> face </md-icon>
+ *  <md-icon md-font-set="material-icons"> face </md-icon>
+ *  <md-icon> #xE87C; </md-icon>
+ * </hljs>
+ *
+ * When using other Font-Icon libraries:
+ *
+ * <hljs lang="js">
+ *  // Specify a font-icon style alias
+ *  angular.config(function($mdIconProvider) {
+ *    $mdIconProvider.fontSet('fa', 'fontawesome');
+ *  });
+ * </hljs>
+ *
+ * <hljs lang="html">
+ *  <md-icon md-font-set="fa">email</md-icon>
+ * </hljs>
+ *
  */
-function mdIconDirective($mdIcon, $mdTheming, $mdAria ) {
+function mdIconDirective($mdIcon, $mdTheming, $mdAria, $interpolate ) {
+
   return {
     scope: {
+      fontSet : '@mdFontSet',
       fontIcon: '@mdFontIcon',
-      svgIcon: '@mdSvgIcon',
-      svgSrc: '@mdSvgSrc'
+      svgIcon : '@mdSvgIcon',
+      svgSrc  : '@mdSvgSrc'
     },
     restrict: 'E',
-    template: getTemplate,
-    link: postLink
+    link : postLink
   };
 
-  function getTemplate(element, attr) {
-    return attr.mdFontIcon ? '<span class="md-font" ng-class="fontIcon"></span>' : '';
-  }
 
   /**
    * Directive postLink
@@ -34639,15 +35632,27 @@ function mdIconDirective($mdIcon, $mdTheming, $mdAria ) {
   function postLink(scope, element, attr) {
     $mdTheming(element);
 
-    var ariaLabel = attr.alt || scope.fontIcon || scope.svgIcon;
+    prepareForFontIcon();
+
+    // If using a font-icon, then the textual name of the icon itself
+    // provides the aria-label.
+
+    var label = attr.alt || scope.fontIcon || scope.svgIcon || element.text();
     var attrName = attr.$normalize(attr.$attr.mdSvgIcon || attr.$attr.mdSvgSrc || '');
 
-    if (attr.alt != '' && !parentsHaveText()) {
-      $mdAria.expect(element, 'aria-label', ariaLabel);
-      $mdAria.expect(element, 'role', 'img');
-    } else {
-      // Hide from the accessibility layer.
-      $mdAria.expect(element, 'aria-hidden', 'true');
+    if ( !attr['aria-label'] ) {
+
+      if (label != '' && !parentsHaveText() ) {
+
+        $mdAria.expect(element, 'aria-label', label);
+        $mdAria.expect(element, 'role', 'img');
+
+      } else if ( !element.text() ) {
+        // If not a font-icon with ligature, then
+        // hide from the accessibility layer.
+
+        $mdAria.expect(element, 'aria-hidden', 'true');
+      }
     }
 
     if (attrName) {
@@ -34663,6 +35668,7 @@ function mdIconDirective($mdIcon, $mdTheming, $mdAria ) {
 
       });
     }
+
     function parentsHaveText() {
       var parent = element.parent();
       if (parent.attr('aria-label') || parent.text()) {
@@ -34673,9 +35679,25 @@ function mdIconDirective($mdIcon, $mdTheming, $mdAria ) {
       }
       return false;
     }
+
+    function prepareForFontIcon () {
+      if (!scope.svgIcon && !scope.svgSrc) {
+        if (scope.fontIcon) {
+          element.addClass('md-font');
+          element.addClass(scope.fontIcon);
+        } else {
+          element.addClass($mdIcon.fontSet(scope.fontSet));
+        }
+      }
+
+    }
   }
 }
-mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria"];
+mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria", "$interpolate"];
+
+})();
+(function(){
+"use strict";
 
   angular
     .module('material.components.icon' )
@@ -34691,17 +35713,21 @@ mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria"];
     * icons and icon sets to be pre-registered and associated with source URLs **before** the `<md-icon />`
     * directives are compiled.
     *
-    * Loading of the actual svg files are deferred to on-demand requests and are loaded
+    * If using font-icons, the developer is repsonsible for loading the fonts.
+    *
+    * If using SVGs, loading of the actual svg files are deferred to on-demand requests and are loaded
     * internally by the `$mdIcon` service using the `$http` service. When an SVG is requested by name/ID,
     * the `$mdIcon` service searches its registry for the associated source URL;
     * that URL is used to on-demand load and parse the SVG dynamically.
     *
+    * @usage
     * <hljs lang="js">
     *   app.config(function($mdIconProvider) {
     *
     *     // Configure URLs for icons specified by [set:]id.
     *
     *     $mdIconProvider
+    *          .defaultFontSet( 'fontawesome' )
     *          .defaultIconSet('my/app/icons.svg')       // Register a default set of SVG icons
     *          .iconSet('social', 'my/app/social.svg')   // Register a named icon set of SVGs
     *          .icon('android', 'my/app/android.svg')    // Register a specific icon (by name)
@@ -34749,8 +35775,8 @@ mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria"];
     * @param {string} id Icon name/id used to register the icon
     * @param {string} url specifies the external location for the data file. Used internally by `$http` to load the
     * data or as part of the lookup in `$templateCache` if pre-loading was configured.
-    * @param {string=} iconSize Number indicating the width and height of the icons in the set. All icons
-    * in the icon set must be the same size. Default size is 24.
+    * @param {number=} viewBoxSize Sets the width and height the icon's viewBox.
+    * It is ignored for icons with an existing viewBox. Default size is 24.
     *
     * @returns {obj} an `$mdIconProvider` reference; used to support method call chains for the API
     *
@@ -34774,13 +35800,14 @@ mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria"];
     * @description
     * Register a source URL for a 'named' set of icons; group of SVG definitions where each definition
     * has an icon id. Individual icons can be subsequently retrieved from this cached set using
-    * `$mdIcon( <icon set name>:<icon name> )`
+    * `$mdIcon(<icon set name>:<icon name>)`
     *
     * @param {string} id Icon name/id used to register the iconset
     * @param {string} url specifies the external location for the data file. Used internally by `$http` to load the
     * data or as part of the lookup in `$templateCache` if pre-loading was configured.
-    * @param {string=} iconSize Number indicating the width and height of the icons in the set. All icons
-    * in the icon set must be the same size. Default size is 24.
+    * @param {number=} viewBoxSize Sets the width and height of the viewBox of all icons in the set. 
+    * It is ignored for icons with an existing viewBox. All icons in the icon set should be the same size.
+    * Default value is 24.
     *
     * @returns {obj} an `$mdIconProvider` reference; used to support method call chains for the API
     *
@@ -34804,12 +35831,13 @@ mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria"];
     * @description
     * Register a source URL for the default 'named' set of icons. Unless explicitly registered,
     * subsequent lookups of icons will failover to search this 'default' icon set.
-    * Icon can be retrieved from this cached, default set using `$mdIcon( <icon name> )`
+    * Icon can be retrieved from this cached, default set using `$mdIcon(<name>)`
     *
     * @param {string} url specifies the external location for the data file. Used internally by `$http` to load the
     * data or as part of the lookup in `$templateCache` if pre-loading was configured.
-    * @param {string=} iconSize Number indicating the width and height of the icons in the set. All icons
-    * in the icon set must be the same size. Default size is 24.
+    * @param {number=} viewBoxSize Sets the width and height of the viewBox of all icons in the set. 
+    * It is ignored for icons with an existing viewBox. All icons in the icon set should be the same size.
+    * Default value is 24.
     *
     * @returns {obj} an `$mdIconProvider` reference; used to support method call chains for the API
     *
@@ -34825,17 +35853,48 @@ mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria"];
     * </hljs>
     *
     */
+  /**
+   * @ngdoc method
+   * @name $mdIconProvider#defaultFontSet
+   *
+   * @description
+   * When using Font-Icons, Angular Material assumes the the Material Design icons will be used and automatically
+   * configures the default font-set == 'material-icons'. Note that the font-set references the font-icon library
+   * class style that should be applied to the `<md-icon>`.
+   *
+   * Configuring the default means that the attributes
+   * `md-font-set="material-icons"` or `class="material-icons"` do not need to be explicitly declared on the
+   * `<md-icon>` markup. For example:
+   *
+   *  `<md-icon> face </md-icon>`
+   *  will render as
+   *  `<span class="material-icons"> face </span>`, and
+   *
+   *  `<md-icon md-font-set="fa"> face </md-icon>`
+   *  will render as
+   *  `<span class="fa"> face </span>`
+   *
+   * @param {string} name of the font-library style that should be applied to the md-icon DOM element
+   *
+   * @usage
+   * <hljs lang="js">
+   *   app.config(function($mdIconProvider) {
+   *     $mdIconProvider.defaultFontSet( 'fontawesome' );
+   *   });
+   * </hljs>
+   *
+   */
+
    /**
     * @ngdoc method
-    * @name $mdIconProvider#defaultIconSize
+    * @name $mdIconProvider#defaultViewBoxSize
     *
     * @description
     * While `<md-icon />` markup can also be style with sizing CSS, this method configures
     * the default width **and** height used for all icons; unless overridden by specific CSS.
     * The default sizing is (24px, 24px).
-    *
-    * @param {string} iconSize Number indicating the width and height of the icons in the set. All icons
-    * in the icon set must be the same size. Default size is 24.
+    * @param {number=} viewBoxSize Sets the width and height of the viewBox for an icon or an icon set.
+    * All icons in a set should be the same size. The default value is 24.
     *
     * @returns {obj} an `$mdIconProvider` reference; used to support method call chains for the API
     *
@@ -34846,41 +35905,68 @@ mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria"];
     *     // Configure URLs for icons specified by [set:]id.
     *
     *     $mdIconProvider
-    *          .defaultIconSize(36)   // Register a default icon size (width == height)
+    *          .defaultViewBoxSize(36)   // Register a default icon size (width == height)
     *   });
     * </hljs>
     *
     */
 
  var config = {
-   defaultIconSize: 24
+   defaultViewBoxSize: 24,
+   defaultFontSet: 'material-icons',
+   fontSets : [ ]
  };
 
  function MdIconProvider() { }
 
  MdIconProvider.prototype = {
-   icon : function icon(id, url, iconSize) {
+   icon : function (id, url, viewBoxSize) {
      if ( id.indexOf(':') == -1 ) id = '$default:' + id;
 
-     config[id] = new ConfigurationItem(url, iconSize );
+     config[id] = new ConfigurationItem(url, viewBoxSize );
      return this;
    },
 
-   iconSet : function iconSet(id, url, iconSize) {
-     config[id] = new ConfigurationItem(url, iconSize );
+   iconSet : function (id, url, viewBoxSize) {
+     config[id] = new ConfigurationItem(url, viewBoxSize );
      return this;
    },
 
-   defaultIconSet : function defaultIconSet(url, iconSize) {
+   defaultIconSet : function (url, viewBoxSize) {
      var setName = '$default';
 
      if ( !config[setName] ) {
-       config[setName] = new ConfigurationItem(url, iconSize );
+       config[setName] = new ConfigurationItem(url, viewBoxSize );
      }
 
-     config[setName].iconSize = iconSize || config.defaultIconSize;
+     config[setName].viewBoxSize = viewBoxSize || config.defaultViewBoxSize;
 
      return this;
+   },
+
+   defaultViewBoxSize : function (viewBoxSize) {
+     config.defaultViewBoxSize = viewBoxSize;
+     return this;
+   },
+   
+   /**
+    * Register an alias name associated with a font-icon library style ;
+    */
+   fontSet : function fontSet(alias, className) {
+    config.fontSets.push({
+      alias : alias,
+      fontSet : className || alias
+    });
+   },
+
+   /**
+    * Specify a default style name associated with a font-icon library
+    * fallback to Material Icons.
+    *
+    */
+   defaultFontSet : function defaultFontSet(className) {
+    config.defaultFontSet = !className ? '' : className;
+    return this;
    },
 
    defaultIconSize : function defaultIconSize(iconSize) {
@@ -34927,7 +36013,7 @@ mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria"];
 
    $get : ['$http', '$q', '$log', '$templateCache', function($http, $q, $log, $templateCache) {
      this.preloadIcons($templateCache);
-     return new MdIconService(config, $http, $q, $log, $templateCache);
+     return MdIconService(config, $http, $q, $log, $templateCache);
    }]
  };
 
@@ -34935,9 +36021,9 @@ mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria"];
     *  Configuration item stored in the Icon registry; used for lookups
     *  to load if not already cached in the `loaded` cache
     */
-   function ConfigurationItem(url, iconSize) {
+   function ConfigurationItem(url, viewBoxSize) {
      this.url = url;
-     this.iconSize = iconSize || config.defaultIconSize;
+     this.viewBoxSize = viewBoxSize || config.defaultViewBoxSize;
    }
 
  /**
@@ -34977,7 +36063,7 @@ mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria"];
   * };
   * </hljs>
   *
-  * NOTE: The `md-icon` directive internally uses the `$mdIcon` service to query, loaded, and instantiate
+  * NOTE: The `<md-icon />  ` directive internally uses the `$mdIcon` service to query, loaded, and instantiate
   * SVG DOM elements.
   */
  function MdIconService(config, $http, $q, $log, $templateCache) {
@@ -34985,8 +36071,15 @@ mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria"];
    var urlRegex = /[-a-zA-Z0-9@:%_\+.~#?&//=]{2,256}\.[a-z]{2,4}\b(\/[-a-zA-Z0-9@:%_\+.~#?&//=]*)?/i;
 
    Icon.prototype = { clone : cloneSVG, prepare: prepareAndStyle };
+   getIcon.fontSet = findRegisteredFontSet;
 
-   return function getIcon(id) {
+   // Publish service...
+   return getIcon;
+
+   /**
+    * Actual $mdIcon service is essentially a lookup function
+    */
+   function getIcon(id) {
      id = id || '';
 
      // If already loaded and cached, use a clone of the cached icon.
@@ -35001,7 +36094,23 @@ mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria"];
          .catch(announceIdNotFound)
          .catch(announceNotFound)
          .then( cacheIcon(id) );
-   };
+   }
+
+   /**
+    * Lookup registered fontSet style using its alias...
+    * If not found,
+    */
+   function findRegisteredFontSet(alias) {
+      var useDefault = angular.isUndefined(alias) || !(alias && alias.length);
+      if ( useDefault ) return config.defaultFontSet;
+
+      var result = alias;
+      angular.forEach(config.fontSets, function(it){
+        if ( it.alias == alias ) result = it.fontSet || result;
+      });
+
+      return result;
+   }
 
    /**
     * Prepare and cache the loaded icon for the specified `id`
@@ -35112,13 +36221,13 @@ mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria"];
     *  loaded iconCache store.
     */
    function prepareAndStyle() {
-     var iconSize = this.config ? this.config.iconSize : config.defaultIconSize;
+     var viewBoxSize = this.config ? this.config.viewBoxSize : config.defaultViewBoxSize;
          angular.forEach({
            'fit'   : '',
            'height': '100%',
            'width' : '100%',
            'preserveAspectRatio': 'xMidYMid meet',
-           'viewBox' : this.element.getAttribute('viewBox') || ('0 0 ' + iconSize + ' ' + iconSize)
+           'viewBox' : this.element.getAttribute('viewBox') || ('0 0 ' + viewBoxSize + ' ' + viewBoxSize)
          }, function(val, attr) {
            this.element.setAttribute(attr, val);
          }, this);
@@ -35140,7 +36249,9 @@ mdIconDirective.$inject = ["$mdIcon", "$mdTheming", "$mdAria"];
 
  }
 
-(function() {
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -35264,7 +36375,8 @@ function labelDirective() {
  *   <input type="text" ng-model="color" required md-maxlength="10">
  * </md-input-container>
  * </hljs>
- * <h3>With Errors (uses [ngMessages](https://docs.angularjs.org/api/ngMessages))</h3>
+ * <h3>With Errors</h3>
+ *
  * <hljs lang="html">
  * <form name="userForm">
  *   <md-input-container>
@@ -35293,6 +36405,7 @@ function labelDirective() {
  * </form>
  * </hljs>
  *
+ * Requires [ngMessages](https://docs.angularjs.org/api/ngMessages).
  * Behaves like the [AngularJS input directive](https://docs.angularjs.org/api/ng/directive/input).
  *
  */
@@ -35503,6 +36616,8 @@ function placeholderDirective($log) {
 placeholderDirective.$inject = ["$log"];
 
 })();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -35593,7 +36708,7 @@ function mdListItemDirective($mdAria, $mdConstant, $timeout) {
         }
         if (hasProxiedElement) {
           wrapIn('div');
-        } else {
+        } else if (!tEl[0].querySelector('md-button')) {
           tEl.addClass('md-no-proxy');
         }
       } else {
@@ -35617,7 +36732,6 @@ function mdListItemDirective($mdAria, $mdConstant, $timeout) {
         }
       }
 
-
       function wrapIn(type) {
         var container;
         if (type == 'div') {
@@ -35626,13 +36740,13 @@ function mdListItemDirective($mdAria, $mdConstant, $timeout) {
           tEl.addClass('md-proxy-focus');
         } else {
           container = angular.element('<md-button class="md-no-style"><div class="md-list-item-inner"></div></md-button>');
-          container[0].setAttribute('ng-click', tEl[0].getAttribute('ng-click'));
-          tEl[0].removeAttribute('ng-click');
-
-          if (tEl[0].getAttribute('aria-label')) {
-            container[0].setAttribute('aria-label', tEl[0].getAttribute('aria-label'));
-            tEl[0].removeAttribute('aria-label');
-          }
+          var copiedAttrs = ['ng-click', 'aria-label', 'ng-disabled'];
+          angular.forEach(copiedAttrs, function(attr) {
+            if (tEl[0].hasAttribute(attr)) {
+              container[0].setAttribute(attr, tEl[0].getAttribute(attr));
+              tEl[0].removeAttribute(attr);
+            }
+          });
           container.children().eq(0).append(tEl.contents());
         }
 
@@ -35716,13 +36830,15 @@ function mdListItemDirective($mdAria, $mdConstant, $timeout) {
         }
 
         if (!hasClick && !proxies.length) {
-          firstChild.addEventListener('keypress', function(e) {
+          firstChild && firstChild.addEventListener('keypress', function(e) {
             if (e.target.nodeName != 'INPUT' && e.target.nodeName != 'TEXTAREA') {
               var keyCode = e.which || e.keyCode;
               if (keyCode == $mdConstant.KEY_CODE.SPACE) {
-                firstChild.click();
-                e.preventDefault();
-                e.stopPropagation();
+                if (firstChild) {
+                  firstChild.click();
+                  e.preventDefault();
+                  e.stopPropagation();
+                }
               }
             }
           });
@@ -35755,16 +36871,639 @@ mdListItemDirective.$inject = ["$mdAria", "$mdConstant", "$timeout"];
  * @module material.components.list
  *
  */
-function MdListController($scope, $element, $mdInkRipple) {
+function MdListController($scope, $element, $mdListInkRipple) {
   var ctrl = this;
   ctrl.attachRipple = attachRipple;
 
   function attachRipple (scope, element) {
     var options = {};
-    $mdInkRipple.attachListControlBehavior(scope, element, options);
+    $mdListInkRipple.attach(scope, element, options);
   }
 }
-MdListController.$inject = ["$scope", "$element", "$mdInkRipple"];
+MdListController.$inject = ["$scope", "$element", "$mdListInkRipple"];
+
+
+})();
+(function(){
+"use strict";
+
+/**
+ * @ngdoc module
+ * @name material.components.menu
+ */
+
+angular.module('material.components.menu', [
+  'material.core',
+  'material.components.backdrop'
+])
+.directive('mdMenu', MenuDirective)
+.controller('mdMenuCtrl', MenuController);
+
+/**
+ * @ngdoc directive
+ * @name mdMenu
+ * @module material.components.menu
+ * @restrict E
+ * @description
+ *
+ * Menus are elements that open when clicked. They are useful for displaying
+ * additional options within the context of an action.
+ *
+ * Every `md-menu` must specify exactly two child elements. The first element is what is
+ * left in the DOM and is used to open the menu. This element is called the trigger element.
+ * The trigger element's scope has access to `$mdOpenMenu()`
+ * which it may call to open the menu.
+ *
+ * The second element is the `md-menu-content` element which represents the
+ * contents of the menu when it is open. Typically this will contain `md-menu-item`s,
+ * but you can do custom content as well.
+ *
+ * <hljs lang="html">
+ * <md-menu>
+ *  <!-- Trigger element is a md-button with an icon -->
+ *  <md-button ng-click="$mdOpenMenu()" class="md-icon-button" aria-label="Open sample menu">
+ *    <md-icon md-svg-icon="call:phone"></md-icon>
+ *  </md-button>
+ *  <md-menu-content>
+ *    <md-menu-item><md-button ng-click="doSomething()">Do Something</md-button></md-menu-item>
+ *  </md-menu-content>
+ * </md-menu>
+ * </hljs>
+
+ * ## Sizing Menus
+ *
+ * The width of the menu when it is open may be specified by specifying a `width`
+ * attribute on the `md-menu-content` element.
+ * See the [Material Design Spec](http://www.google.com/design/spec/components/menus.html#menus-specs)
+ * for more information.
+ *
+ *
+ * ## Aligning Menus
+ *
+ * When a menu opens, it is important that the content aligns with the trigger element.
+ * Failure to align menus can result in jarring experiences for users as content
+ * suddenly shifts. To help with this, `md-menu` provides serveral APIs to help
+ * with alignment.
+ *
+ * ### Target Mode
+ *
+ * By default, `md-menu` will attempt to align the `md-menu-content` by aligning
+ * designated child elements in both the trigger and the menu content.
+ *
+ * To specify the alignment element in the `trigger` you can use the `md-menu-origin`
+ * attribute on a child element. If no `md-menu-origin` is specified, the `md-menu`
+ * will be used as the origin element.
+ *
+ * Similarly, the `md-menu-content` may specify a `md-menu-align-target` for a
+ * `md-menu-item` to specify the node that it should try and align with.
+ *
+ * In this example code, we specify an icon to be our origin element, and an
+ * icon in our menu content to be our alignment target. This ensures that both
+ * icons are aligned when the menu opens.
+ *
+ * <hljs lang="html">
+ * <md-menu>
+ *  <md-button ng-click="$mdOpenMenu()" class="md-icon-button" aria-label="Open some menu">
+ *    <md-icon md-menu-origin md-svg-icon="call:phone"></md-icon>
+ *  </md-button>
+ *  <md-menu-content>
+ *    <md-menu-item>
+ *      <md-button ng-click="doSomething()" aria-label="Do something">
+ *        <md-icon md-menu-align-target md-svg-icon="call:phone"></md-icon>
+ *        Do Something
+ *      </md-button>
+ *    </md-menu-item>
+ *  </md-menu-content>
+ * </md-menu>
+ * </hljs>
+ *
+ * Sometimes we want to specify alignment on the right side of an element, for example
+ * if we have a menu on the right side a toolbar, we want to right align our menu content.
+ *
+ * We can specify the origin by using the `md-position-mode` attribute on both
+ * the `x` and `y` axis. Right now only the `x-axis` has more than one option.
+ * You may specify the default mode of `target target` or
+ * `target-right target` to specify a right-oriented alignment target. See the
+ * position section of the demos for more examples.
+ *
+ * ### Menu Offsets
+ *
+ * It is sometimes unavoidable to need to have a deeper level of control for
+ * the positioning of a menu to ensure perfect alignment. `md-menu` provides
+ * the `md-offset` attribute to allow pixel level specificty of adjusting the
+ * exact positioning.
+ *
+ * This offset is provided in the format of `x y` or `n` where `n` will be used
+ * in both the `x` and `y` axis.
+ *
+ * For example, to move a menu by `2px` from the top, we can use:
+ * <hljs lang="html">
+ * <md-menu md-offset="2 0">
+ *   <!-- menu-content -->
+ * </md-menu>
+ * </hljs>
+ *
+ * @usage
+ * <hljs lang="html">
+ * <md-menu>
+ *  <md-button ng-click="$mdOpenMenu()" class="md-icon-button">
+ *    <md-icon md-svg-icon="call:phone"></md-icon>
+ *  </md-button>
+ *  <md-menu-content>
+ *    <md-menu-item><md-button ng-click="doSomething()">Do Something</md-button></md-menu-item>
+ *  </md-menu-content>
+ * </md-menu>
+ * </hljs>
+ *
+ * @param {string} md-position-mode The position mode in the form of
+             `x`, `y`. Default value is `target`,`target`. Right now the `x` axis
+             also suppports `target-right`.
+ * @param {string} md-offset An offset to apply to the dropdown after positioning
+             `x`, `y`. Default value is `0`,`0`.
+ *
+ */
+
+function MenuDirective($mdMenu) {
+  return {
+    restrict: 'E',
+    require: 'mdMenu',
+    controller: 'mdMenuCtrl', // empty function to be built by link
+    scope: true,
+    compile: compile
+  };
+
+  function compile(templateElement) {
+    templateElement.addClass('md-menu');
+    var triggerElement = templateElement.children()[0];
+    if (!triggerElement.hasAttribute('ng-click')) {
+      triggerElement = triggerElement.querySelector('[ng-click]');
+    }
+    triggerElement && triggerElement.setAttribute('aria-haspopup', 'true');
+    if (templateElement.children().length != 2) {
+      throw Error('Invalid HTML for md-menu. Expected two children elements.');
+    }
+    return link;
+  }
+
+  function link(scope, element, attrs, mdMenuCtrl) {
+
+    // Move everything into a md-menu-container and pass it to the controller
+    var menuContainer = angular.element(
+      '<div class="md-open-menu-container md-whiteframe-z2"></div>'
+    );
+    var menuContents = element.children()[1];
+    menuContainer.append(menuContents);
+    mdMenuCtrl.init(menuContainer);
+
+    scope.$on('$destroy', function() {
+      if (mdMenuCtrl.isOpen) {
+        menuContainer.remove();
+        mdMenuCtrl.close();
+      }
+    });
+
+  }
+}
+MenuDirective.$inject = ["$mdMenu"];
+
+function MenuController($mdMenu, $attrs, $element, $scope) {
+
+  var menuContainer;
+  var ctrl = this;
+  var triggerElement;
+
+  // Called by our linking fn to provide access to the menu-content
+  // element removed during link
+  this.init = function(setMenuContainer) {
+    menuContainer = setMenuContainer;
+    triggerElement = $element[0].querySelector('[ng-click]');
+  };
+
+  // Uses the $mdMenu interim element service to open the menu contents
+  this.open = function openMenu() {
+    ctrl.isOpen = true;
+    triggerElement.setAttribute('aria-expanded', 'true');
+    $mdMenu.show({
+      mdMenuCtrl: ctrl,
+      element: menuContainer,
+      target: $element[0]
+    });
+  };
+  // Expose a open function to the child scope for html to use
+  $scope.$mdOpenMenu = this.open;
+
+  // Use the $mdMenu interim element service to close the menu contents
+  this.close = function closeMenu(skipFocus) {
+    ctrl.isOpen = false;
+    triggerElement.setAttribute('aria-expanded', 'false');
+    $mdMenu.hide();
+
+    if (!skipFocus) {
+      $element.children()[0].focus();
+    }
+  };
+
+  // Build a nice object out of our string attribute which specifies the
+  // target mode for left and top positioning
+  this.positionMode = function() {
+    var attachment = ($attrs.mdPositionMode || 'target').split(' ');
+
+    // If attachment is a single item, duplicate it for our second value.
+    // ie. 'target' -> 'target target'
+    if (attachment.length == 1) {
+      attachment.push(attachment[0]);
+    }
+
+    return {
+      left: attachment[0],
+      top: attachment[1]
+    };
+  };
+
+  // Build a nice object out of our string attribute which specifies
+  // the offset of top and left in pixels.
+  this.offsets = function() {
+    var offsets = ($attrs.mdOffset || '0 0').split(' ').map(parseFloat);
+    if (offsets.length == 2) {
+      return {
+        left: offsets[0],
+        top: offsets[1]
+      };
+    } else if (offsets.length == 1) {
+      return {
+        top: offsets[0],
+        left: offsets[0]
+      };
+    } else {
+      throw Error('Invalid offsets specified. Please follow format <x, y> or <n>');
+    }
+  };
+}
+MenuController.$inject = ["$mdMenu", "$attrs", "$element", "$scope"];
+
+})();
+(function(){
+"use strict";
+
+angular.module('material.components.menu')
+.provider('$mdMenu', MenuProvider);
+
+/*
+ * Interim element provider for the menu.
+ * Handles behavior for a menu while it is open, including:
+ *    - handling animating the menu opening/closing
+ *    - handling key/mouse events on the menu element
+ *    - handling enabling/disabling scroll while the menu is open
+ *    - handling redrawing during resizes and orientation changes
+ *
+ */
+
+function MenuProvider($$interimElementProvider) {
+  var MENU_EDGE_MARGIN = 8;
+
+  menuDefaultOptions.$inject = ["$$rAF", "$window", "$mdUtil", "$mdTheming", "$timeout", "$mdConstant", "$document"];
+  return $$interimElementProvider('$mdMenu')
+    .setDefaults({
+      methods: ['target'],
+      options: menuDefaultOptions
+    });
+
+  /* @ngInject */
+  function menuDefaultOptions($$rAF, $window, $mdUtil, $mdTheming, $timeout, $mdConstant, $document) {
+    return {
+      parent: 'body',
+      onShow: onShow,
+      onRemove: onRemove,
+      hasBackdrop: true,
+      disableParentScroll: true,
+      skipCompile: true,
+      themable: true
+    };
+
+    /**
+     * Boilerplate interimElement onShow function
+     * Handles inserting the menu into the DOM, positioning it, and wiring up
+     * various interaction events
+     */
+    function onShow(scope, element, opts) {
+
+      // Sanitize and set defaults on opts
+      buildOpts(opts);
+
+      // Wire up theming on our menu element
+      $mdTheming.inherit(opts.menuContentEl, opts.target);
+
+      // Register various listeners to move menu on resize/orientation change
+      handleResizing();
+
+      // Disable scrolling
+      if (opts.disableParentScroll) {
+        opts.restoreScroll = $mdUtil.disableScrollAround(opts.element);
+      }
+
+      // Only activate click listeners after a short time to stop accidental double taps/clicks
+      // from clicking the wrong item
+      $timeout(activateInteraction, 75, false);
+
+      if (opts.backdrop) {
+        $mdTheming.inherit(opts.backdrop, opts.parent);
+        opts.parent.append(opts.backdrop);
+      }
+      showMenu();
+
+      // Return the promise for when our menu is done animating in
+      return $mdUtil.transitionEndPromise(element, {timeout: 350});
+
+      /** Check for valid opts and set some sane defaults */
+      function buildOpts() {
+        if (!opts.target) {
+          throw Error(
+            '$mdMenu.show() expected a target to animate from in options.target'
+          );
+        }
+        angular.extend(opts, {
+          alreadyOpen: false,
+          isRemoved: false,
+          target: angular.element(opts.target), //make sure it's not a naked dom node
+          parent: angular.element(opts.parent),
+          menuContentEl: angular.element(element[0].querySelector('md-menu-content')),
+          backdrop: opts.hasBackdrop && angular.element('<md-backdrop class="md-menu-backdrop md-click-catcher">')
+        });
+      }
+
+      /** Wireup various resize listeners for screen changes */
+      function handleResizing() {
+        opts.resizeFn = function() {
+          positionMenu(element, opts);
+        };
+        angular.element($window).on('resize', opts.resizeFn);
+        angular.element($window).on('orientationchange', opts.resizeFn);
+      }
+
+      /**
+       * Place the menu into the DOM and call positioning related functions
+       */
+      function showMenu() {
+        opts.parent.append(element);
+
+        element.removeClass('md-leave');
+        // Kick off our animation/positioning but first, wait a few frames
+        // so all of our computed positions/sizes are accurate
+        $$rAF(function() {
+          $$rAF(function() {
+            positionMenu(element, opts);
+            // Wait a frame before fading in menu (md-active) so that we don't trigger
+            // transitions on the menu position changing
+            $$rAF(function() {
+              element.addClass('md-active');
+              opts.alreadyOpen = true;
+              element[0].style[$mdConstant.CSS.TRANSFORM] = '';
+            });
+          });
+        });
+      }
+
+
+      /**
+       * Activate interaction on the menu. Wire up keyboard listerns for
+       * clicks, keypresses, backdrop closing, etc.
+       */
+      function activateInteraction() {
+        element.addClass('md-clickable');
+
+        // close on backdrop click
+        opts.backdrop && opts.backdrop.on('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          opts.mdMenuCtrl.close(true);
+        });
+
+        // Wire up keyboard listeners.
+        // Close on escape, focus next item on down arrow, focus prev item on up
+        opts.menuContentEl.on('keydown', function(ev) {
+          scope.$apply(function() {
+            switch (ev.keyCode) {
+              case $mdConstant.KEY_CODE.ESCAPE: opts.mdMenuCtrl.close(); break;
+              case $mdConstant.KEY_CODE.UP_ARROW: focusMenuItem(ev, opts.menuContentEl, opts, -1); break;
+              case $mdConstant.KEY_CODE.DOWN_ARROW: focusMenuItem(ev, opts.menuContentEl, opts, 1); break;
+            }
+          });
+        });
+
+        // Close menu on menu item click, if said menu-item is not disabled
+        opts.menuContentEl.on('click', function(e) {
+          var target = e.target;
+          // Traverse up the event until we get to the menuContentEl to see if
+          // there is an ng-click and that the ng-click is not disabled
+          do {
+            if (target && target.hasAttribute('ng-click')) {
+              if (!target.hasAttribute('disabled')) {
+                close();
+              }
+              break;
+            }
+          } while ((target = target.parentNode) && target != opts.menuContentEl)
+
+          function close() {
+            scope.$apply(function() {
+              opts.mdMenuCtrl.close();
+            });
+          }
+        });
+
+        // kick off initial focus in the menu on the first element
+        var focusTarget = opts.menuContentEl[0].querySelector('[md-menu-focus-target]');
+        if (!focusTarget) focusTarget = opts.menuContentEl[0].firstElementChild.firstElementChild;
+        focusTarget.focus();
+      }
+    }
+
+    /**
+      * Takes a keypress event and focuses the next/previous menu
+      * item from the emitting element
+      * @param {event} e - The origin keypress event
+      * @param {angular.element} menuEl - The menu element
+      * @param {object} opts - The interim element options for the mdMenu
+      * @param {number} direction - The direction to move in (+1 = next, -1 = prev)
+      */
+    function focusMenuItem(e, menuEl, opts, direction) {
+      var currentItem = $mdUtil.getClosest(e.target, 'MD-MENU-ITEM');
+
+      var items = $mdUtil.nodesToArray(menuEl[0].children);
+      var currentIndex = items.indexOf(currentItem);
+
+      // Traverse through our elements in the specified direction (+/-1) and try to
+      // focus them until we find one that accepts focus
+      for (var i = currentIndex + direction; i >= 0 && i < items.length; i = i + direction) {
+        var focusTarget = items[i].firstElementChild || items[i];
+        var didFocus = attemptFocus(focusTarget);
+        if (didFocus) {
+          break;
+        }
+      }
+    }
+
+    /**
+     * Attempts to focus an element. Checks whether that element is the currently
+     * focused element after attempting.
+     * @param {HTMLElement} el - the element to attempt focus on
+     * @returns {bool} - whether the element was successfully focused
+     */
+    function attemptFocus(el) {
+      if (el && el.getAttribute('tabindex') != -1) {
+        el.focus();
+        if ($document[0].activeElement == el) {
+          return true;
+        } else {
+          return false;
+        }
+      }
+    }
+
+    /**
+     * Boilerplate interimElement onRemove function
+     * Handles removing the menu from the DOM, cleaning up the element
+     * and removing various listeners
+     */
+    function onRemove(scope, element, opts) {
+      opts.isRemoved = true;
+      element.addClass('md-leave')
+        .removeClass('md-clickable');
+
+      // Disable resizing handlers
+      angular.element($window).off('resize', opts.resizeFn);
+      angular.element($window).off('orientationchange', opts.resizeFn);
+      opts.resizeFn = undefined;
+
+      // Wait for animate out, then remove from the DOM
+      return $mdUtil.transitionEndPromise(element, { timeout: 350 }).then(function() {
+        element.removeClass('md-active');
+        opts.backdrop && opts.backdrop.remove();
+        if (element[0].parentNode === opts.parent[0]) {
+          opts.parent[0].removeChild(element[0]);
+        }
+        opts.restoreScroll && opts.restoreScroll();
+      });
+    }
+
+    /**
+     * Computes menu position and sets the style on the menu container
+     * @param {HTMLElement} el - the menu container element
+     * @param {object} opts - the interim element options object
+     */
+    function positionMenu(el, opts) {
+      if (opts.isRemoved) return;
+
+      var containerNode = el[0],
+          openMenuNode = el[0].firstElementChild,
+          openMenuNodeRect = openMenuNode.getBoundingClientRect(),
+          boundryNode = opts.parent[0],
+          boundryNodeRect = boundryNode.getBoundingClientRect();
+
+      var originNode = opts.target[0].querySelector('[md-menu-origin]') || opts.target[0],
+          originNodeRect = originNode.getBoundingClientRect();
+
+
+      var bounds = {
+        left: boundryNodeRect.left + MENU_EDGE_MARGIN,
+        top: boundryNodeRect.top + MENU_EDGE_MARGIN,
+        bottom: boundryNodeRect.bottom - MENU_EDGE_MARGIN,
+        right: boundryNodeRect.right - MENU_EDGE_MARGIN
+      };
+
+
+      var alignTarget, alignTargetRect, existingOffsets;
+      var positionMode = opts.mdMenuCtrl.positionMode();
+
+      if (positionMode.top == 'target' || positionMode.left == 'target' || positionMode.left == 'target-right') {
+        // TODO: Allow centering on an arbitrary node, for now center on first menu-item's child
+        alignTarget = openMenuNode.firstElementChild.firstElementChild || openMenuNode.firstElementChild;
+        alignTarget = alignTarget.querySelector('[md-menu-align-target]') || alignTarget;
+        alignTargetRect = alignTarget.getBoundingClientRect();
+
+        existingOffsets = {
+          top: parseFloat(containerNode.style.top || 0),
+          left: parseFloat(containerNode.style.left || 0)
+        };
+      }
+
+      var position = { };
+      var transformOrigin = 'top ';
+
+      switch (positionMode.top) {
+        case 'target':
+          position.top = existingOffsets.top + originNodeRect.top - alignTargetRect.top;
+          break;
+        // Future support for mdMenuBar
+        // case 'top':
+        //   position.top = originNodeRect.top;
+        //   break;
+        // case 'bottom':
+        //   position.top = originNodeRect.top + originNodeRect.height;
+        //   break;
+        default:
+          throw new Error('Invalid target mode "' + positionMode.top + '" specified for md-menu on Y axis.');
+      }
+
+      switch (positionMode.left) {
+        case 'target':
+          position.left = existingOffsets.left + originNodeRect.left - alignTargetRect.left;
+          transformOrigin += 'left';
+          break;
+        case 'target-right':
+          position.left = originNodeRect.right - openMenuNodeRect.width + (openMenuNodeRect.right - alignTargetRect.right);
+          transformOrigin += 'right';
+          break;
+        // Future support for mdMenuBar
+        // case 'left':
+        //   position.left = originNodeRect.left;
+        //   transformOrigin += 'left';
+        //   break;
+        // case 'right':
+        //   position.left = originNodeRect.right - containerNode.offsetWidth;
+        //   transformOrigin += 'right';
+        //   break;
+        default:
+          throw new Error('Invalid target mode "' + positionMode.left + '" specified for md-menu on X axis.');
+      }
+
+      var offsets = opts.mdMenuCtrl.offsets();
+      position.top += offsets.top;
+      position.left += offsets.left;
+
+      clamp(position);
+
+      el.css({
+        top: position.top + 'px',
+        left: position.left + 'px'
+      });
+
+      containerNode.style[$mdConstant.CSS.TRANSFORM_ORIGIN] = transformOrigin;
+
+      // Animate a scale out if we aren't just repositioning
+      if (!opts.alreadyOpen) {
+        containerNode.style[$mdConstant.CSS.TRANSFORM] = 'scale(' +
+          Math.min(originNodeRect.width / containerNode.offsetWidth, 1.0) + ',' +
+          Math.min(originNodeRect.height / containerNode.offsetHeight, 1.0) +
+        ')';
+      }
+
+      /**
+       * Clamps the repositioning of the menu within the confines of
+       * bounding element (often the screen/body)
+       */
+      function clamp(pos) {
+        pos.top = Math.max(Math.min(pos.top, bounds.bottom - containerNode.offsetHeight), bounds.top);
+        pos.left = Math.max(Math.min(pos.left, bounds.right - containerNode.offsetWidth), bounds.left);
+      }
+    }
+  }
+}
+MenuProvider.$inject = ["$$interimElementProvider"];
+
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -35865,6 +37604,10 @@ function MdProgressCircularDirective($mdConstant, $mdTheming) {
   }
 }
 MdProgressCircularDirective.$inject = ["$mdConstant", "$mdTheming"];
+
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -35982,6 +37725,10 @@ var transforms = (function() {
     return 'translateX(' + translateX.toString() + '%) scale(' + scale.toString() + ', 1)';
   }
 })();
+
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -36286,6 +38033,10 @@ function mdRadioButtonDirective($mdAria, $mdUtil, $mdTheming) {
 }
 mdRadioButtonDirective.$inject = ["$mdAria", "$mdUtil", "$mdTheming"];
 
+})();
+(function(){
+"use strict";
+
 /**
  * @ngdoc module
  * @name material.components.select
@@ -36329,6 +38080,7 @@ angular.module('material.components.select', [
  * @description Displays a select box, bound to an ng-model.
  *
  * @param {expression} ng-model The model!
+ * @param {expression=} md-on-close expression to be evaluated when the select is closed
  * @param {boolean=} multiple Whether it's multiple.
  * @param {string=} placeholder Placeholder hint text.
  * @param {string=} aria-label Optional label for accessibility. Only necessary if no placeholder or
@@ -36377,7 +38129,9 @@ function SelectDirective($mdSelect, $mdUtil, $mdTheming, $mdAria, $interpolate, 
     }
     labelEl.append('<span class="md-select-icon" aria-hidden="true"></span>');
     labelEl.addClass('md-select-label');
-    labelEl.attr('id', 'select_label_' + $mdUtil.nextUid());
+    if (!labelEl[0].hasAttribute('id')) {
+      labelEl.attr('id', 'select_label_' + $mdUtil.nextUid());
+    }
 
     // There's got to be an md-content inside. If there's not one, let's add it.
     if (!element.find('md-content').length) {
@@ -36441,7 +38195,7 @@ function SelectDirective($mdSelect, $mdUtil, $mdTheming, $mdAria, $interpolate, 
       $mdTheming(element);
 
       if (attr.name && formCtrl) {
-        var selectEl = element.parent()[0].querySelector('select[name=".' + attr.name + '"]')
+        var selectEl = element.parent()[0].querySelector('select[name=".' + attr.name + '"]');
         formCtrl.$removeControl(angular.element(selectEl).controller());
       }
 
@@ -36461,6 +38215,10 @@ function SelectDirective($mdSelect, $mdUtil, $mdTheming, $mdAria, $interpolate, 
 
       mdSelectCtrl.setIsPlaceholder = function(val) {
         val ? labelEl.addClass('md-placeholder') : labelEl.removeClass('md-placeholder');
+      };
+
+      mdSelectCtrl.triggerClose = function() {
+        $parse(attr.mdOnClose)(scope);
       };
 
       scope.$$postDigest(function() {
@@ -36521,22 +38279,26 @@ function SelectDirective($mdSelect, $mdUtil, $mdTheming, $mdAria, $interpolate, 
           element.off('click', openSelect);
           element.off('keydown', handleKeypress);
         } else {
-          element.attr({'tabindex': attr.tabindex, 'aria-disabled':'false'});
+          element.attr({'tabindex': attr.tabindex, 'aria-disabled': 'false'});
           element.on('click', openSelect);
           element.on('keydown', handleKeypress);
         }
       });
+
       if (!attr.disabled && !attr.ngDisabled) {
-        element.attr({'tabindex': attr.tabindex, 'aria-disabled':'false'});
+        element.attr({'tabindex': attr.tabindex, 'aria-disabled': 'false'});
         element.on('click', openSelect);
         element.on('keydown', handleKeypress);
       }
 
-      element.attr({
-        'role': 'combobox',
-        'id': 'select_' + $mdUtil.nextUid(),
+      var ariaAttrs = {
+        role: 'combobox',
         'aria-expanded': 'false'
-      });
+      };
+      if (!element[0].hasAttribute('id')) {
+        ariaAttrs.id = 'select_' + $mdUtil.nextUid();
+      }
+      element.attr(ariaAttrs);
 
       scope.$on('$destroy', function() {
         if (isOpen) {
@@ -36752,7 +38514,7 @@ function SelectMenuDirective($parse, $mdUtil, $mdTheming) {
       } else {
         self.hashGetter = function getHashValue(value) {
           if (angular.isObject(value)) {
-            return '$$object_' + (value.$$mdSelectId || (value.$$mdSelectId = ++selectNextId));
+            return 'object_' + (value.$$mdSelectId || (value.$$mdSelectId = ++selectNextId));
           }
           return value;
         };
@@ -36761,7 +38523,7 @@ function SelectMenuDirective($parse, $mdUtil, $mdTheming) {
     };
 
     self.selectedLabels = function() {
-      var selectedOptionEls = nodesToArray($element[0].querySelectorAll('md-option[selected]'));
+      var selectedOptionEls = $mdUtil.nodesToArray($element[0].querySelectorAll('md-option[selected]'));
       if (selectedOptionEls.length) {
         return selectedOptionEls.map(function(el) { return el.textContent; }).join(', ');
       } else {
@@ -36844,7 +38606,7 @@ function SelectMenuDirective($parse, $mdUtil, $mdTheming) {
 }
 SelectMenuDirective.$inject = ["$parse", "$mdUtil", "$mdTheming"];
 
-function OptionDirective($mdInkRipple, $mdUtil) {
+function OptionDirective($mdButtonInkRipple, $mdUtil) {
 
   OptionController.$inject = ["$element"];
   return {
@@ -36890,7 +38652,7 @@ function OptionDirective($mdInkRipple, $mdUtil) {
       });
     });
 
-    $mdInkRipple.attachButtonBehavior(scope, element);
+    $mdButtonInkRipple.attach(scope, element);
     configureAria();
 
     function setOptionValue(newValue, oldValue) {
@@ -36909,11 +38671,15 @@ function OptionDirective($mdInkRipple, $mdUtil) {
     });
 
     function configureAria() {
-      element.attr({
+      var ariaAttrs = {
         'role': 'option',
-        'aria-selected': 'false',
-        'id': 'select_option_'+ $mdUtil.nextUid()
-      });
+        'aria-selected': 'false'
+      };
+
+      if (!element[0].hasAttribute('id')) {
+        ariaAttrs.id = 'select_option_' + $mdUtil.nextUid();
+      }
+      element.attr(ariaAttrs);
     }
   }
 
@@ -36934,7 +38700,7 @@ function OptionDirective($mdInkRipple, $mdUtil) {
   }
 
 }
-OptionDirective.$inject = ["$mdInkRipple", "$mdUtil"];
+OptionDirective.$inject = ["$mdButtonInkRipple", "$mdUtil"];
 
 function OptgroupDirective() {
   return {
@@ -37020,7 +38786,7 @@ function SelectProvider($$interimElementProvider) {
       }
 
       if (opts.disableParentScroll && !$mdUtil.getClosest(opts.target, 'MD-DIALOG')) {
-        opts.restoreScroll = $mdUtil.disableScrollAround(opts.target);
+        opts.restoreScroll = $mdUtil.disableScrollAround(opts.element);
       } else {
         opts.disableParentScroll = false;
       }
@@ -37098,7 +38864,7 @@ function SelectProvider($$interimElementProvider) {
 
 
         function focusOption(direction) {
-          var optionsArray = nodesToArray(optionNodes);
+          var optionsArray = $mdUtil.nodesToArray(optionNodes);
           var index = optionsArray.indexOf(opts.focusedNode);
           if (index === -1) {
             // We lost the previously focused element, reset to first option
@@ -37163,6 +38929,7 @@ function SelectProvider($$interimElementProvider) {
           opts.restoreScroll();
         }
         if (opts.restoreFocus) opts.target.focus();
+        mdSelect && mdSelect.triggerClose();
       });
     }
 
@@ -37314,14 +39081,10 @@ function SelectProvider($$interimElementProvider) {
 }
 SelectProvider.$inject = ["$$interimElementProvider"];
 
-// Annoying method to copy nodes to an array, thanks to IE
-function nodesToArray(nodes) {
-  var results = [];
-  for (var i = 0; i < nodes.length; ++i) {
-    results.push(nodes.item(i));
-  }
-  return results;
-}
+
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -37737,6 +39500,10 @@ function SidenavController($scope, $element, $attrs, $mdComponentRegistry, $q) {
 }
 SidenavController.$inject = ["$scope", "$element", "$attrs", "$mdComponentRegistry", "$q"];
 
+})();
+(function(){
+"use strict";
+
   /**
    * @ngdoc module
    * @name material.components.slider
@@ -37850,9 +39617,9 @@ function SliderDirective($$rAF, $window, $mdAria, $mdUtil, $mdConstant, $mdThemi
     var throttledRefreshDimensions = $mdUtil.throttle(refreshSliderDimensions, 5000);
 
     // Default values, overridable by attrs
-    attr.min ? attr.$observe('min', updateMin) : updateMin(0);
-    attr.max ? attr.$observe('max', updateMax) : updateMax(100);
-    attr.step ? attr.$observe('step', updateStep) : updateStep(1);
+    angular.isDefined(attr.min) ? attr.$observe('min', updateMin) : updateMin(0);
+    angular.isDefined(attr.max) ? attr.$observe('max', updateMax) : updateMax(100);
+    angular.isDefined(attr.step)? attr.$observe('step', updateStep) : updateStep(1);
 
     // We have to manually stop the $watch on ngDisabled because it exists
     // on the parent scope, and won't be automatically destroyed when
@@ -38008,7 +39775,9 @@ function SliderDirective($$rAF, $window, $mdAria, $mdUtil, $mdConstant, $mdThemi
     }
     function stepValidator(value) {
       if (angular.isNumber(value)) {
-        return Math.round(value / step) * step;
+        var formattedValue = (Math.round(value / step) * step);
+        // Format to 3 digits after the decimal point - fixes #2015.
+        return (Math.round(formattedValue * 1000) / 1000);
       }
     }
 
@@ -38128,6 +39897,10 @@ function SliderDirective($$rAF, $window, $mdAria, $mdUtil, $mdConstant, $mdThemi
   }
 }
 SliderDirective.$inject = ["$$rAF", "$window", "$mdAria", "$mdUtil", "$mdConstant", "$mdTheming", "$mdGesture", "$parse"];
+
+})();
+(function(){
+"use strict";
 
 /*
  * @ngdoc module
@@ -38283,6 +40056,9 @@ function MdSticky($document, $mdConstant, $compile, $$rAF, $mdUtil) {
       }
       item.height = item.element.prop('offsetHeight');
       item.clone.css('margin-left', item.left + 'px');
+      if ($mdUtil.floatingScrollbars()) {
+        item.clone.css('margin-right', '0');
+      }
     }
 
 
@@ -38431,6 +40207,10 @@ function MdSticky($document, $mdConstant, $compile, $$rAF, $mdUtil) {
 }
 MdSticky.$inject = ["$document", "$mdConstant", "$compile", "$$rAF", "$mdUtil"];
 
+})();
+(function(){
+"use strict";
+
 /**
  * @ngdoc module
  * @name material.components.subheader
@@ -38485,9 +40265,10 @@ function MdSubheaderDirective($mdSticky, $compile, $mdTheming) {
         '</div>' +
       '</h2>',
     compile: function(element, attr, transclude) {
-      var outerHTML = element[0].outerHTML;
       return function postLink(scope, element, attr) {
         $mdTheming(element);
+        var outerHTML = element[0].outerHTML;
+
         function getContent(el) {
           return angular.element(el[0].querySelector('.md-subheader-content'));
         }
@@ -38503,7 +40284,6 @@ function MdSubheaderDirective($mdSticky, $compile, $mdTheming) {
         if (!element.hasClass('md-no-sticky')) {
           transclude(scope, function(clone) {
             var stickyClone = $compile(angular.element(outerHTML))(scope);
-            $mdTheming(stickyClone);
             getContent(stickyClone).append(clone);
             $mdSticky(scope, element, stickyClone);
           });
@@ -38513,6 +40293,10 @@ function MdSubheaderDirective($mdSticky, $compile, $mdTheming) {
   };
 }
 MdSubheaderDirective.$inject = ["$mdSticky", "$compile", "$mdTheming"];
+
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -38576,6 +40360,10 @@ function getDirective(name) {
 }
 
 
+
+})();
+(function(){
+"use strict";
 
 /**
  * @private
@@ -38736,6 +40524,10 @@ function MdSwitch(mdCheckboxDirective, $mdTheming, $mdUtil, $document, $mdConsta
 }
 MdSwitch.$inject = ["mdCheckboxDirective", "$mdTheming", "$mdUtil", "$document", "$mdConstant", "$parse", "$$rAF", "$mdGesture"];
 
+})();
+(function(){
+"use strict";
+
 /**
  * @ngdoc module
  * @name material.components.tabs
@@ -38763,6 +40555,10 @@ angular.module('material.components.tabs', [
   'material.core',
   'material.components.icon'
 ]);
+
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc module
@@ -39019,6 +40815,10 @@ function MdToastProvider($$interimElementProvider) {
 }
 MdToastProvider.$inject = ["$$interimElementProvider"];
 
+})();
+(function(){
+"use strict";
+
 /**
  * @ngdoc module
  * @name material.components.toolbar
@@ -39131,10 +40931,10 @@ function mdToolbarDirective($$rAF, $mdConstant, $mdUtil, $mdTheming, $animate, $
           //
           // As the user scrolls down, the content will be transformed up slowly
           // to put the content underneath where the toolbar was.
-          contentElement.css(
-            'margin-top',
-            (-toolbarHeight * shrinkSpeedFactor) + 'px'
-          );
+          var margin =  (-toolbarHeight * shrinkSpeedFactor) + 'px';
+          contentElement.css('margin-top', margin);
+          contentElement.css('margin-bottom', margin);
+
           onContentScroll();
         }
 
@@ -39178,6 +40978,10 @@ function mdToolbarDirective($$rAF, $mdConstant, $mdUtil, $mdTheming, $animate, $
 }
 mdToolbarDirective.$inject = ["$$rAF", "$mdConstant", "$mdUtil", "$mdTheming", "$animate", "$timeout"];
 
+})();
+(function(){
+"use strict";
+
 /**
  * @ngdoc module
  * @name material.components.tooltip
@@ -39203,7 +41007,7 @@ angular
  *   <md-tooltip>
  *     Play Music
  *   </md-tooltip>
- *   <md-icon icon="/img/icons/ic_play_arrow_24px.svg"></md-icon>
+ *   <md-icon icon="img/icons/ic_play_arrow_24px.svg"></md-icon>
  * </md-button>
  * </hljs>
  *
@@ -39213,7 +41017,8 @@ angular
  * @param {string=} md-direction Which direction would you like the tooltip to go?  Supports left, right, top, and bottom.  Defaults to bottom.
  * @param {boolean=} md-autohide If present or provided with a boolean value, the tooltip will hide on mouse leave, regardless of focus
  */
-function MdTooltipDirective($timeout, $window, $$rAF, $document, $mdUtil, $mdTheming, $rootElement, $animate, $q) {
+function MdTooltipDirective($timeout, $window, $$rAF, $document, $mdUtil, $mdTheming, $rootElement,
+                            $animate, $q) {
 
   var TOOLTIP_SHOW_DELAY = 300;
   var TOOLTIP_WINDOW_EDGE_SPACE = 8;
@@ -39252,6 +41057,7 @@ function MdTooltipDirective($timeout, $window, $$rAF, $document, $mdUtil, $mdThe
       manipulateElement();
       bindEvents();
       configureWatchers();
+      addAriaLabel();
     }
 
     function setDefaults () {
@@ -39259,45 +41065,72 @@ function MdTooltipDirective($timeout, $window, $$rAF, $document, $mdUtil, $mdThe
     }
 
     function configureWatchers () {
-      scope.$watch('visible', function (isVisible) {
-        if (isVisible) showTooltip();
-        else hideTooltip();
-      });
       scope.$on('$destroy', function() {
         scope.visible = false;
         element.remove();
         angular.element($window).off('resize', debouncedOnResize);
       });
+      scope.$watch('visible', function (isVisible) {
+        if (isVisible) showTooltip();
+        else hideTooltip();
+      });
+    }
+
+    function addAriaLabel () {
+      if (!parent.attr('aria-label') && !parent.text().trim()) {
+        parent.attr('aria-label', element.text().trim());
+      }
     }
 
     function manipulateElement () {
       element.detach();
       element.attr('role', 'tooltip');
-      element.attr('id', attr.id || ('tooltip_' + $mdUtil.nextUid()));
     }
 
     function getParentWithPointerEvents () {
       var parent = element.parent();
-      while ($window.getComputedStyle(parent[0])['pointer-events'] == 'none') {
+      while (parent && $window.getComputedStyle(parent[0])['pointer-events'] == 'none') {
         parent = parent.parent();
       }
       return parent;
     }
 
-    function getNearestContentElement () {
-      var current = element.parent()[0];
-      // Look for the nearest parent md-content, stopping at the rootElement.
-      while (current && current !== $rootElement[0] && current !== document.body) {
-        if (current.tagName && current.tagName.toLowerCase() == 'md-content') break;
-        current = current.parentNode;
-      }
-      return current;
+     function getNearestContentElement () {
+       var current = element.parent()[0];
+       // Look for the nearest parent md-content, stopping at the rootElement.
+       while (current && current !== $rootElement[0] && current !== document.body) {
+         current = current.parentNode;
+       }
+       return current;
+     }
+
+    function hasComputedStyleValue(key, value) {
+        // Check if we should show it or not...
+        var computedStyles = $window.getComputedStyle(element[0]);
+        return angular.isDefined(computedStyles[key]) && (computedStyles[key] == value);
     }
 
     function bindEvents () {
-      var autohide = scope.hasOwnProperty('autohide') ? scope.autohide : attr.hasOwnProperty('mdAutohide');
-      parent.on('focus mouseenter touchstart', function() { setVisible(true); });
-      parent.on('blur mouseleave touchend touchcancel', function() { if ($document[0].activeElement !== parent[0] || autohide) setVisible(false); });
+      var mouseActive = false;
+      var enterHandler = function() {
+        if (!hasComputedStyleValue('pointer-events','none')) {
+          setVisible(true);
+        }
+      };
+      var leaveHandler = function () {
+        var autohide = scope.hasOwnProperty('autohide') ? scope.autohide : attr.hasOwnProperty('mdAutohide');
+        if (autohide || mouseActive || ($document[0].activeElement !== parent[0]) ) {
+          setVisible(false);
+        }
+        mouseActive = false;
+      };
+
+      // to avoid `synthetic clicks` we listen to mousedown instead of `click`
+      parent.on('mousedown', function() { mouseActive = true; });
+      parent.on('focus mouseenter touchstart', enterHandler );
+      parent.on('blur mouseleave touchend touchcancel', leaveHandler );
+
+
       angular.element($window).on('resize', debouncedOnResize);
     }
 
@@ -39323,13 +41156,11 @@ function MdTooltipDirective($timeout, $window, $$rAF, $document, $mdUtil, $mdThe
 
       // Check if we should display it or not.
       // This handles hide-* and show-* along with any user defined css
-      var computedStyles = $window.getComputedStyle(element[0]);
-      if (angular.isDefined(computedStyles.display) && computedStyles.display == 'none') {
+      if ( hasComputedStyleValue('display','none') ) {
+        scope.visible = false;
         element.detach();
         return;
       }
-
-      parent.attr('aria-describedby', element.attr('id'));
 
       positionTooltip();
       angular.forEach([element, background, content], function (element) {
@@ -39338,7 +41169,6 @@ function MdTooltipDirective($timeout, $window, $$rAF, $document, $mdUtil, $mdThe
     }
 
     function hideTooltip() {
-      parent.removeAttr('aria-describedby');
       $q.all([
         $animate.removeClass(content, 'md-show'),
         $animate.removeClass(background, 'md-show'),
@@ -39410,11 +41240,19 @@ function MdTooltipDirective($timeout, $window, $$rAF, $document, $mdUtil, $mdThe
 }
 MdTooltipDirective.$inject = ["$timeout", "$window", "$$rAF", "$document", "$mdUtil", "$mdTheming", "$rootElement", "$animate", "$q"];
 
+})();
+(function(){
+"use strict";
+
 /**
  * @ngdoc module
  * @name material.components.whiteframe
  */
 angular.module('material.components.whiteframe', []);
+
+})();
+(function(){
+"use strict";
 
 angular
     .module('material.components.autocomplete')
@@ -39424,11 +41262,10 @@ var ITEM_HEIGHT = 41,
     MAX_HEIGHT = 5.5 * ITEM_HEIGHT,
     MENU_PADDING = 8;
 
-function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $mdTheming, $window, $animate, $rootElement) {
-
+function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $mdTheming, $window,
+                             $animate, $rootElement, $attrs) {
   //-- private variables
-
-  var self      = this,
+  var ctrl      = this,
       itemParts = $scope.itemsExpr.split(/ in /i),
       itemExpr  = itemParts[1],
       elements  = null,
@@ -39436,43 +41273,48 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
       cache     = {},
       noBlur    = false,
       selectedItemWatchers = [],
-      hasFocus  = false;
+      hasFocus  = false,
+      lastCount = 0;
+
+  //-- public variables with handlers
+  defineProperty('hidden', handleHiddenChange, true);
 
   //-- public variables
-
-  self.scope    = $scope;
-  self.parent   = $scope.$parent;
-  self.itemName = itemParts[0];
-  self.matches  = [];
-  self.loading  = false;
-  self.hidden   = true;
-  self.index    = null;
-  self.messages = [];
-  self.id       = $mdUtil.nextUid();
+  ctrl.scope      = $scope;
+  ctrl.parent     = $scope.$parent;
+  ctrl.itemName   = itemParts[0];
+  ctrl.matches    = [];
+  ctrl.loading    = false;
+  ctrl.hidden     = true;
+  ctrl.index      = null;
+  ctrl.messages   = [];
+  ctrl.id         = $mdUtil.nextUid();
+  ctrl.isDisabled = null;
+  ctrl.isRequired = null;
 
   //-- public methods
-
-  self.keydown  = keydown;
-  self.blur     = blur;
-  self.focus    = focus;
-  self.clear    = clearValue;
-  self.select   = select;
-  self.getCurrentDisplayValue         = getCurrentDisplayValue;
-  self.registerSelectedItemWatcher    = registerSelectedItemWatcher;
-  self.unregisterSelectedItemWatcher  = unregisterSelectedItemWatcher;
-
-  self.listEnter = function () { noBlur = true; };
-  self.listLeave = function () {
-    noBlur = false;
-    if (!hasFocus) self.hidden = true;
-  };
-  self.mouseUp   = function () { elements.input.focus(); };
+  ctrl.keydown    = keydown;
+  ctrl.blur       = blur;
+  ctrl.focus      = focus;
+  ctrl.clear      = clearValue;
+  ctrl.select     = select;
+  ctrl.listEnter  = onListEnter;
+  ctrl.listLeave  = onListLeave;
+  ctrl.mouseUp    = onMouseup;
+  ctrl.getCurrentDisplayValue         = getCurrentDisplayValue;
+  ctrl.registerSelectedItemWatcher    = registerSelectedItemWatcher;
+  ctrl.unregisterSelectedItemWatcher  = unregisterSelectedItemWatcher;
 
   return init();
 
   //-- initialization methods
 
+  /**
+   * Initialize the controller, setup watchers, gather elements
+   */
   function init () {
+    $mdUtil.initOptionalProperties($scope, $attrs, { searchText: null, selectedItem: null } );
+    $mdTheming($element);
     configureWatchers();
     $timeout(function () {
       gatherElements();
@@ -39481,6 +41323,10 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
     });
   }
 
+  /**
+   * Calculates the dropdown's position and applies the new styles to the menu element
+   * @returns {*}
+   */
   function positionDropdown () {
     if (!elements) return $timeout(positionDropdown, 0, false);
     var hrect  = elements.wrap.getBoundingClientRect(),
@@ -39507,6 +41353,9 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
     elements.$.ul.css(styles);
     $timeout(correctHorizontalAlignment, 0, false);
 
+    /**
+     * Makes sure that the menu doesn't go off of the screen on either side.
+     */
     function correctHorizontalAlignment () {
       var dropdown = elements.ul.getBoundingClientRect(),
           styles   = {};
@@ -39517,6 +41366,9 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
     }
   }
 
+  /**
+   * Moves the dropdown menu to the body tag in order to avoid z-index and overflow issues.
+   */
   function moveDropdown () {
     if (!elements.$.root.length) return;
     $mdTheming(elements.$.ul);
@@ -39525,23 +41377,38 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
     if ($animate.pin) $animate.pin(elements.$.ul, $rootElement);
   }
 
+  /**
+   * Sends focus to the input element.
+   */
   function focusElement () {
     if ($scope.autofocus) elements.input.focus();
   }
 
+  /**
+   * Sets up any watchers used by autocomplete
+   */
   function configureWatchers () {
     var wait = parseInt($scope.delay, 10) || 0;
-    $scope.$watch('searchText', wait
-        ? $mdUtil.debounce(handleSearchText, wait)
-        : handleSearchText);
+    $attrs.$observe('disabled', function (value) { ctrl.isDisabled = value; });
+    $attrs.$observe('required', function (value) { ctrl.isRequired = value !== null; });
+    $scope.$watch('searchText', wait ? $mdUtil.debounce(handleSearchText, wait) : handleSearchText);
     registerSelectedItemWatcher(selectedItemChange);
     $scope.$watch('selectedItem', handleSelectedItemChange);
-    $scope.$watch('$mdAutocompleteCtrl.hidden', function (hidden, oldHidden) {
-      if (!hidden && oldHidden) positionDropdown();
-    });
     angular.element($window).on('resize', positionDropdown);
+    $scope.$on('$destroy', cleanup);
   }
 
+  /**
+   * Removes any events or leftover elements created by this controller
+   */
+  function cleanup () {
+    angular.element($window).off('resize', positionDropdown);
+    elements.$.ul.remove();
+  }
+
+  /**
+   * Gathers all of the elements needed for this controller
+   */
   function gatherElements () {
     elements = {
       main:  $element[0],
@@ -39555,6 +41422,10 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
     elements.$ = getAngularElements(elements);
   }
 
+  /**
+   * Finds the element that the menu will base its position on
+   * @returns {*}
+   */
   function getSnapTarget () {
     for (var element = $element; element.length; element = element.parent()) {
       if (angular.isDefined(element.attr('md-autocomplete-snap'))) return element[0];
@@ -39562,6 +41433,11 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
     return elements.wrap;
   }
 
+  /**
+   * Gathers angular-wrapped versions of each element
+   * @param elements
+   * @returns {{}}
+   */
   function getAngularElements (elements) {
     var obj = {};
     for (var key in elements) {
@@ -39572,6 +41448,47 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
 
   //-- event/change handlers
 
+  /**
+   * Handles changes to the `hidden` property.
+   * @param hidden
+   * @param oldHidden
+   */
+  function handleHiddenChange (hidden, oldHidden) {
+    if (!hidden && oldHidden) positionDropdown();
+    if (!hidden) {
+      if (elements) $mdUtil.disableScrollAround(elements.ul);
+    } else {
+      $mdUtil.enableScrolling();
+    }
+  }
+
+  /**
+   * When the user mouses over the dropdown menu, ignore blur events.
+   */
+  function onListEnter () {
+    noBlur = true;
+  }
+
+  /**
+   * When the user's mouse leaves the menu, blur events may hide the menu again.
+   */
+  function onListLeave () {
+    noBlur = false;
+    if (!hasFocus) ctrl.hidden = true;
+  }
+
+  /**
+   * When the mouse button is released, send focus back to the input field.
+   */
+  function onMouseup () {
+    elements.input.focus();
+  }
+
+  /**
+   * Handles changes to the selected item.
+   * @param selectedItem
+   * @param previousSelectedItem
+   */
   function selectedItemChange (selectedItem, previousSelectedItem) {
     if (selectedItem) {
       $scope.searchText = getDisplayValue(selectedItem);
@@ -39580,6 +41497,12 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
       $scope.itemChange(getItemScope(selectedItem));
   }
 
+  /**
+   * Calls any external watchers listening for the selected item.  Used in conjunction with
+   * `registerSelectedItemWatcher`.
+   * @param selectedItem
+   * @param previousSelectedItem
+   */
   function handleSelectedItemChange(selectedItem, previousSelectedItem) {
     for (var i = 0; i < selectedItemWatchers.length; ++i) {
       selectedItemWatchers[i](selectedItem, previousSelectedItem);
@@ -39607,8 +41530,13 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
     }
   }
 
+  /**
+   * Handles changes to the searchText property.
+   * @param searchText
+   * @param previousSearchText
+   */
   function handleSearchText (searchText, previousSearchText) {
-    self.index = getDefaultIndex();
+    ctrl.index = getDefaultIndex();
     //-- do nothing on init
     if (searchText === previousSearchText) return;
     //-- clear selected item if search text no longer matches it
@@ -39619,55 +41547,65 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
       $scope.textChange(getItemScope($scope.selectedItem));
     //-- cancel results if search text is not long enough
     if (!isMinLengthMet()) {
-      self.loading = false;
-      self.matches = [];
-      self.hidden = shouldHide();
+      ctrl.loading = false;
+      ctrl.matches = [];
+      ctrl.hidden = shouldHide();
       updateMessages();
     } else {
       handleQuery();
     }
   }
 
+  /**
+   * Handles input blur event, determines if the dropdown should hide.
+   */
   function blur () {
     hasFocus = false;
-    if (!noBlur) self.hidden = true;
+    if (!noBlur) ctrl.hidden = true;
   }
 
+  /**
+   * Handles input focus event, determines if the dropdown should show.
+   */
   function focus () {
     hasFocus = true;
     //-- if searchText is null, let's force it to be a string
     if (!angular.isString($scope.searchText)) $scope.searchText = '';
     if ($scope.minLength > 0) return;
-    self.hidden = shouldHide();
-    if (!self.hidden) handleQuery();
+    ctrl.hidden = shouldHide();
+    if (!ctrl.hidden) handleQuery();
   }
 
+  /**
+   * Handles keyboard input.
+   * @param event
+   */
   function keydown (event) {
     switch (event.keyCode) {
       case $mdConstant.KEY_CODE.DOWN_ARROW:
-        if (self.loading) return;
+        if (ctrl.loading) return;
         event.preventDefault();
-        self.index = Math.min(self.index + 1, self.matches.length - 1);
+        ctrl.index = Math.min(ctrl.index + 1, ctrl.matches.length - 1);
         updateScroll();
-        updateSelectionMessage();
+        updateMessages();
         break;
       case $mdConstant.KEY_CODE.UP_ARROW:
-        if (self.loading) return;
+        if (ctrl.loading) return;
         event.preventDefault();
-        self.index = self.index < 0 ? self.matches.length - 1 : Math.max(0, self.index - 1);
+        ctrl.index = ctrl.index < 0 ? ctrl.matches.length - 1 : Math.max(0, ctrl.index - 1);
         updateScroll();
-        updateSelectionMessage();
+        updateMessages();
         break;
       case $mdConstant.KEY_CODE.TAB:
       case $mdConstant.KEY_CODE.ENTER:
-        if (self.hidden || self.loading || self.index < 0 || self.matches.length < 1) return;
+        if (ctrl.hidden || ctrl.loading || ctrl.index < 0 || ctrl.matches.length < 1) return;
         event.preventDefault();
-        select(self.index);
+        select(ctrl.index);
         break;
       case $mdConstant.KEY_CODE.ESCAPE:
-        self.matches = [];
-        self.hidden = true;
-        self.index = getDefaultIndex();
+        ctrl.matches = [];
+        ctrl.hidden = true;
+        ctrl.index = getDefaultIndex();
         break;
       default:
     }
@@ -39675,47 +41613,106 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
 
   //-- getters
 
+  /**
+   * Returns the minimum length needed to display the dropdown.
+   * @returns {*}
+   */
   function getMinLength () {
     return angular.isNumber($scope.minLength) ? $scope.minLength : 1;
   }
 
+  /**
+   * Returns the display value for an item.
+   * @param item
+   * @returns {*}
+   */
   function getDisplayValue (item) {
     return (item && $scope.itemText) ? $scope.itemText(getItemScope(item)) : item;
   }
 
+  /**
+   * Returns the locals object for compiling item templates.
+   * @param item
+   * @returns {{}}
+   */
   function getItemScope (item) {
     if (!item) return;
     var locals = {};
-    if (self.itemName) locals[self.itemName] = item;
+    if (ctrl.itemName) locals[ctrl.itemName] = item;
     return locals;
   }
 
+  /**
+   * Returns the default index based on whether or not autoselect is enabled.
+   * @returns {number}
+   */
   function getDefaultIndex () {
     return $scope.autoselect ? 0 : -1;
   }
 
+  /**
+   * Determines if the menu should be hidden.
+   * @returns {boolean}
+   */
   function shouldHide () {
     if (!isMinLengthMet()) return true;
   }
 
+  /**
+   * Returns the display value of the current item.
+   * @returns {*}
+   */
   function getCurrentDisplayValue () {
-    return getDisplayValue(self.matches[self.index]);
+    return getDisplayValue(ctrl.matches[ctrl.index]);
   }
 
+  /**
+   * Determines if the minimum length is met by the search text.
+   * @returns {*}
+   */
   function isMinLengthMet () {
-    return $scope.searchText.length >= getMinLength();
+    return angular.isDefined($scope.searchText) && $scope.searchText.length >= getMinLength();
   }
 
   //-- actions
 
-  function select (index) {
-    $scope.selectedItem = self.matches[index];
-    $scope.searchText = getDisplayValue($scope.selectedItem) || $scope.searchText;
-    self.hidden = true;
-    self.index = 0;
-    self.matches = [];
+  /**
+   * Defines a public property with a handler and a default value.
+   * @param key
+   * @param handler
+   * @param value
+   */
+  function defineProperty (key, handler, value) {
+    Object.defineProperty(ctrl, key, {
+      get: function () { return value; },
+      set: function (newValue) {
+        var oldValue = value;
+        value = newValue;
+        handler(newValue, oldValue);
+      }
+    });
   }
 
+  /**
+   * Selects the item at the given index.
+   * @param index
+   */
+  function select (index) {
+    $scope.selectedItem = ctrl.matches[index];
+    ctrl.hidden = true;
+    ctrl.index = 0;
+    ctrl.matches = [];
+    //-- force form to update state for validation
+    $timeout(function () {
+      elements.$.input.controller('ngModel').$setViewValue(getDisplayValue($scope.selectedItem) ||
+          $scope.searchText);
+      ctrl.hidden = true;
+    });
+  }
+
+  /**
+   * Clears the searchText value and selected item.
+   */
   function clearValue () {
     $scope.searchText = '';
     select(-1);
@@ -39728,46 +41725,60 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
     elements.input.focus();
   }
 
+  /**
+   * Fetches the results for the provided search text.
+   * @param searchText
+   */
   function fetchResults (searchText) {
     var items = $scope.$parent.$eval(itemExpr),
         term = searchText.toLowerCase();
     if (angular.isArray(items)) {
       handleResults(items);
     } else {
-      self.loading = true;
+      ctrl.loading = true;
       if (items.success) items.success(handleResults);
       if (items.then)    items.then(handleResults);
-      if (items.error)   items.error(function () { self.loading = false; });
+      if (items.error)   items.error(function () { ctrl.loading = false; });
     }
     function handleResults (matches) {
       cache[term] = matches;
-      self.loading = false;
       if (searchText !== $scope.searchText) return; //-- just cache the results if old request
+      ctrl.loading = false;
       promise = null;
-      self.matches = matches;
-      self.hidden = shouldHide();
+      ctrl.matches = matches;
+      ctrl.hidden = shouldHide();
       updateMessages();
       positionDropdown();
     }
   }
 
+  /**
+   * Updates the ARIA messages
+   */
   function updateMessages () {
-    if (self.hidden) return;
-    switch (self.matches.length) {
-      case 0:  return self.messages.splice(0);
-      case 1:  return self.messages.push({ display: 'There is 1 match available.' });
-      default: return self.messages.push({ display: 'There are '
-          + self.matches.length
-          + ' matches available.' });
+    ctrl.messages = [ getCountMessage(), getCurrentDisplayValue() ];
+  }
+
+  /**
+   * Returns the ARIA message for how many results match the current query.
+   * @returns {*}
+   */
+  function getCountMessage () {
+    if (lastCount === ctrl.matches.length) return '';
+    lastCount = ctrl.matches.length;
+    switch (ctrl.matches.length) {
+      case 0:  return 'There are no matches available.';
+      case 1:  return 'There is 1 match available.';
+      default: return 'There are ' + ctrl.matches.length + ' matches available.';
     }
   }
 
-  function updateSelectionMessage () {
-    self.messages.push({ display: getCurrentDisplayValue() });
-  }
-
+  /**
+   * Makes sure that the focused element is within view.
+   */
   function updateScroll () {
-    var li  = elements.li[self.index],
+    if (!elements.li[ctrl.index]) return;
+    var li  = elements.li[ctrl.index],
         top = li.offsetTop,
         bot = top + li.offsetHeight,
         hgt = elements.ul.clientHeight;
@@ -39778,6 +41789,10 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
     }
   }
 
+  /**
+   * Starts the query to gather the results for the current searchText.  Attempts to return cached
+   * results first, then forwards the process to `fetchResults` if necessary.
+   */
   function handleQuery () {
     var searchText = $scope.searchText,
         term = searchText.toLowerCase();
@@ -39788,16 +41803,20 @@ function MdAutocompleteCtrl ($scope, $element, $mdUtil, $mdConstant, $timeout, $
     }
     //-- if results are cached, pull in cached results
     if (!$scope.noCache && cache[term]) {
-      self.matches = cache[term];
+      ctrl.matches = cache[term];
       updateMessages();
     } else {
       fetchResults(searchText);
     }
-    self.hidden = shouldHide();
+    if (hasFocus) ctrl.hidden = shouldHide();
   }
 
 }
-MdAutocompleteCtrl.$inject = ["$scope", "$element", "$mdUtil", "$mdConstant", "$timeout", "$mdTheming", "$window", "$animate", "$rootElement"];
+MdAutocompleteCtrl.$inject = ["$scope", "$element", "$mdUtil", "$mdConstant", "$timeout", "$mdTheming", "$window", "$animate", "$rootElement", "$attrs"];
+
+})();
+(function(){
+"use strict";
 
 angular
     .module('material.components.autocomplete')
@@ -39818,10 +41837,23 @@ angular
  * In more complex cases, you may want to include other content such as a message to display when
  * no matches were found.  You can do this by wrapping your template in `md-item-template` and adding
  * a tag for `md-not-found`.  An example of this is shown below.
+ * ### Validation
+ *
+ * You can use `ng-messages` to include validation the same way that you would normally validate;
+ * however, if you want to replicate a standard input with a floating label, you will have to do the
+ * following:
+ *
+ * - Make sure that your template is wrapped in `md-item-template`
+ * - Add your `ng-messages` code inside of `md-autocomplete`
+ * - Add your validation properties to `md-autocomplete` (ie. `required`)
+ * - Add a `name` to `md-autocomplete` (to be used on the generated `input`)
+ *
+ * There is an example below of how this should look.
+ *
  *
  * @param {expression} md-items An expression in the format of `item in items` to iterate over matches for your search.
- * @param {expression} md-selected-item-change An expression to be run each time a new item is selected
- * @param {expression} md-search-text-change An expression to be run each time the search text updates
+ * @param {expression=} md-selected-item-change An expression to be run each time a new item is selected
+ * @param {expression=} md-search-text-change An expression to be run each time the search text updates
  * @param {string=} md-search-text A model to bind the search query text to
  * @param {object=} md-selected-item A model to bind the selected item to
  * @param {string=} md-item-text An expression that will convert your object to a single string.
@@ -39833,6 +41865,7 @@ angular
  * @param {boolean=} md-autofocus If true, will immediately focus the input element
  * @param {boolean=} md-autoselect If true, the first item will be selected by default
  * @param {string=} md-menu-class This will be applied to the dropdown menu for styling
+ * @param {string=} md-floating-label This will add a floating label to autocomplete and wrap it in `md-input-container`
  *
  * @usage
  * ###Basic Example
@@ -39864,147 +41897,194 @@ angular
  *
  * In this example, our code utilizes `md-item-template` and `md-not-found` to specify the different
  * parts that make up our component.
+ *
+ * ### Example with validation
+ * <hljs lang="html">
+ * <form name="autocompleteForm">
+ *   <md-autocomplete
+ *       required
+ *       input-name="autocomplete"
+ *       md-selected-item="selectedItem"
+ *       md-search-text="searchText"
+ *       md-items="item in getMatches(searchText)"
+ *       md-item-text="item.display">
+ *     <md-item-template>
+ *       <span md-highlight-text="searchText">{{item.display}}</span>
+ *     </md-item-template>
+ *     <div ng-messages="autocompleteForm.autocomplete.$error">
+ *       <div ng-message="required">This field is required</div>
+ *     </div>
+ *   </md-autocomplete>
+ * </form>
+ * </hljs>
+ *
+ * In this example, our code utilizes `md-item-template` and `md-not-found` to specify the different
+ * parts that make up our component.
  */
 
 function MdAutocomplete ($mdTheming, $mdUtil) {
   return {
     controller:   'MdAutocompleteCtrl',
     controllerAs: '$mdAutocompleteCtrl',
-    link:         link,
     scope:        {
-      name:          '@',
-      searchText:    '=?mdSearchText',
-      selectedItem:  '=?mdSelectedItem',
-      itemsExpr:     '@mdItems',
-      itemText:      '&mdItemText',
-      placeholder:   '@placeholder',
-      noCache:       '=?mdNoCache',
-      itemChange:    '&?mdSelectedItemChange',
-      textChange:    '&?mdSearchTextChange',
-      minLength:     '=?mdMinLength',
-      delay:         '=?mdDelay',
-      autofocus:     '=?mdAutofocus',
-      floatingLabel: '@?mdFloatingLabel',
-      autoselect:    '=?mdAutoselect',
-      menuClass:     '@?mdMenuClass'
+      inputName:      '@mdInputName',
+      inputMinlength: '@mdInputMinlength',
+      inputMaxlength: '@mdInputMaxlength',
+      searchText:     '=?mdSearchText',
+      selectedItem:   '=?mdSelectedItem',
+      itemsExpr:      '@mdItems',
+      itemText:       '&mdItemText',
+      placeholder:    '@placeholder',
+      noCache:        '=?mdNoCache',
+      itemChange:     '&?mdSelectedItemChange',
+      textChange:     '&?mdSearchTextChange',
+      minLength:      '=?mdMinLength',
+      delay:          '=?mdDelay',
+      autofocus:      '=?mdAutofocus',
+      floatingLabel:  '@?mdFloatingLabel',
+      autoselect:     '=?mdAutoselect',
+      menuClass:      '@?mdMenuClass'
     },
     template: function (element, attr) {
-      var itemTemplate = getItemTemplate(),
-          noItemsTemplate = getNoItemsTemplate();
+      var noItemsTemplate = getNoItemsTemplate(),
+          itemTemplate = getItemTemplate(),
+          leftover = element.html();
       return '\
-        <md-autocomplete-wrap role="listbox">\
-          <md-input-container ng-if="floatingLabel">\
-            <label>{{floatingLabel}}</label>\
-            <input type="text"\
-                id="fl-input-{{$mdAutocompleteCtrl.id}}"\
-                name="{{name}}"\
-                autocomplete="off"\
-                ng-disabled="isDisabled"\
-                ng-model="$mdAutocompleteCtrl.scope.searchText"\
-                ng-keydown="$mdAutocompleteCtrl.keydown($event)"\
-                ng-blur="$mdAutocompleteCtrl.blur()"\
-                ng-focus="$mdAutocompleteCtrl.focus()"\
-                aria-owns="ul-{{$mdAutocompleteCtrl.id}}"\
-                aria-label="{{floatingLabel}}"\
-                aria-autocomplete="list"\
-                aria-haspopup="true"\
-                aria-activedescendant=""\
-                aria-expanded="{{!$mdAutocompleteCtrl.hidden}}"/>\
-          </md-input-container>\
-          <input type="text"\
-              id="input-{{$mdAutocompleteCtrl.id}}"\
-              name="{{name}}"\
-              ng-if="!floatingLabel"\
-              autocomplete="off"\
-              ng-disabled="isDisabled"\
-              ng-model="$mdAutocompleteCtrl.scope.searchText"\
-              ng-keydown="$mdAutocompleteCtrl.keydown($event)"\
-              ng-blur="$mdAutocompleteCtrl.blur()"\
-              ng-focus="$mdAutocompleteCtrl.focus()"\
-              placeholder="{{placeholder}}"\
-              aria-owns="ul-{{$mdAutocompleteCtrl.id}}"\
-              aria-label="{{placeholder}}"\
-              aria-autocomplete="list"\
-              aria-haspopup="true"\
-              aria-activedescendant=""\
-              aria-expanded="{{!$mdAutocompleteCtrl.hidden}}"/>\
-          <button\
-              type="button"\
-              tabindex="-1"\
-              ng-if="$mdAutocompleteCtrl.scope.searchText && !isDisabled"\
-              ng-click="$mdAutocompleteCtrl.clear()">\
-            <md-icon md-svg-icon="md-cancel"></md-icon>\
-            <span class="md-visually-hidden">Clear</span>\
-          </button>\
+        <md-autocomplete-wrap\
+            layout="row"\
+            ng-class="{ \'md-whiteframe-z1\': !floatingLabel }"\
+            role="listbox">\
+          ' + getInputElement() + '\
           <md-progress-linear\
               ng-if="$mdAutocompleteCtrl.loading"\
               md-mode="indeterminate"></md-progress-linear>\
           <ul role="presentation"\
-              class="md-autocomplete-suggestions {{menuClass || \'\'}}"\
+              class="md-autocomplete-suggestions md-whiteframe-z1 {{menuClass || \'\'}}"\
               id="ul-{{$mdAutocompleteCtrl.id}}"\
+              ng-hide="$mdAutocompleteCtrl.hidden"\
               ng-mouseenter="$mdAutocompleteCtrl.listEnter()"\
               ng-mouseleave="$mdAutocompleteCtrl.listLeave()"\
               ng-mouseup="$mdAutocompleteCtrl.mouseUp()">\
             <li ng-repeat="(index, item) in $mdAutocompleteCtrl.matches"\
                 ng-class="{ selected: index === $mdAutocompleteCtrl.index }"\
-                ng-hide="$mdAutocompleteCtrl.hidden"\
                 ng-click="$mdAutocompleteCtrl.select(index)"\
                 md-autocomplete-list-item="$mdAutocompleteCtrl.itemName">\
                 ' + itemTemplate + '\
             </li>\
-            ' + (function () {
-              return noItemsTemplate
-                  ? '<li ng-if="!$mdAutocompleteCtrl.matches.length && !$mdAutocompleteCtrl.loading\
-                         && !$mdAutocompleteCtrl.hidden"\
-                         ng-hide="$mdAutocompleteCtrl.hidden"\
-                         md-autocomplete-parent-scope>' + noItemsTemplate + '</li>'
-                  : '';
-            })() + '\
+            ' + noItemsTemplate + '\
           </ul>\
         </md-autocomplete-wrap>\
         <aria-status\
             class="md-visually-hidden"\
             role="status"\
             aria-live="assertive">\
-          <p ng-repeat="message in $mdAutocompleteCtrl.messages">{{message.display}}</p>\
+          <p ng-repeat="message in $mdAutocompleteCtrl.messages" ng-if="message">{{message}}</p>\
         </aria-status>';
 
-      function getItemTemplate () {
-        var templateTag = element.find('md-item-template').remove();
-        return templateTag.length ? templateTag.html() : element.html();
+      function getItemTemplate() {
+        var templateTag = element.find('md-item-template').remove(),
+            html = templateTag.length ? templateTag.html() : element.html();
+        if (!templateTag.length) element.empty();
+        return html;
       }
 
-      function getNoItemsTemplate () {
-        var templateTag = element.find('md-not-found').remove();
-        return templateTag.length ? templateTag.html() : '';
+      function getNoItemsTemplate() {
+        var templateTag = element.find('md-not-found').remove(),
+            template = templateTag.length ? templateTag.html() : '';
+        return template
+            ? '<li ng-if="!$mdAutocompleteCtrl.matches.length && !$mdAutocompleteCtrl.loading\
+                         && !$mdAutocompleteCtrl.hidden"\
+                         ng-hide="$mdAutocompleteCtrl.hidden"\
+                         md-autocomplete-parent-scope>' + template + '</li>'
+            : '';
+
+      }
+
+      function getInputElement() {
+        if (attr.mdFloatingLabel) {
+          return '\
+            <md-input-container flex ng-if="floatingLabel">\
+              <label>{{floatingLabel}}</label>\
+              <input type="search"\
+                  id="fl-input-{{$mdAutocompleteCtrl.id}}"\
+                  name="{{inputName}}"\
+                  autocomplete="off"\
+                  ng-required="isRequired"\
+                  ng-minlength="inputMinlength"\
+                  ng-maxlength="inputMaxlength"\
+                  ng-disabled="$mdAutocompleteCtrl.isDisabled"\
+                  ng-model="$mdAutocompleteCtrl.scope.searchText"\
+                  ng-keydown="$mdAutocompleteCtrl.keydown($event)"\
+                  ng-blur="$mdAutocompleteCtrl.blur()"\
+                  ng-focus="$mdAutocompleteCtrl.focus()"\
+                  aria-owns="ul-{{$mdAutocompleteCtrl.id}}"\
+                  aria-label="{{floatingLabel}}"\
+                  aria-autocomplete="list"\
+                  aria-haspopup="true"\
+                  aria-activedescendant=""\
+                  aria-expanded="{{!$mdAutocompleteCtrl.hidden}}"/>\
+              <div md-autocomplete-parent-scope md-autocomplete-replace>' + leftover + '</div>\
+            </md-input-container>';
+        } else {
+          return '\
+            <input flex type="search"\
+                id="input-{{$mdAutocompleteCtrl.id}}"\
+                name="{{inputName}}"\
+                ng-if="!floatingLabel"\
+                autocomplete="off"\
+                ng-required="isRequired"\
+                ng-disabled="$mdAutocompleteCtrl.isDisabled"\
+                ng-model="$mdAutocompleteCtrl.scope.searchText"\
+                ng-keydown="$mdAutocompleteCtrl.keydown($event)"\
+                ng-blur="$mdAutocompleteCtrl.blur()"\
+                ng-focus="$mdAutocompleteCtrl.focus()"\
+                placeholder="{{placeholder}}"\
+                aria-owns="ul-{{$mdAutocompleteCtrl.id}}"\
+                aria-label="{{placeholder}}"\
+                aria-autocomplete="list"\
+                aria-haspopup="true"\
+                aria-activedescendant=""\
+                aria-expanded="{{!$mdAutocompleteCtrl.hidden}}"/>\
+            <button\
+                type="button"\
+                tabindex="-1"\
+                ng-if="$mdAutocompleteCtrl.scope.searchText && !$mdAutocompleteCtrl.isDisabled"\
+                ng-click="$mdAutocompleteCtrl.clear()">\
+              <md-icon md-svg-icon="md-close"></md-icon>\
+              <span class="md-visually-hidden">Clear</span>\
+            </button>\
+                ';
+        }
       }
     }
   };
-
-  function link (scope, element, attr) {
-    attr.$observe('disabled', function (value) { scope.isDisabled = value; });
-
-    $mdUtil.initOptionalProperties(scope, attr, {searchText:null, selectedItem:null} );
-
-    $mdTheming(element);
-  }
 }
 MdAutocomplete.$inject = ["$mdTheming", "$mdUtil"];
+
+})();
+(function(){
+"use strict";
 
 angular
     .module('material.components.autocomplete')
     .controller('MdHighlightCtrl', MdHighlightCtrl);
 
 function MdHighlightCtrl ($scope, $element, $interpolate) {
-  var term = $element.attr('md-highlight-text'),
-      text = $interpolate($element.text())($scope),
-      flags = $element.attr('md-highlight-flags') || '',
-      watcher = $scope.$watch(term, function (term) {
-        var regex = getRegExp(term, flags),
-            html = text.replace(regex, '<span class="highlight">$&</span>');
-        $element.html(html);
-      });
-  $element.on('$destroy', function () { watcher(); });
+  this.init = init;
+
+  return init();
+
+  function init (term) {
+    var unsafeText = $interpolate($element.html())($scope),
+        text = angular.element('<div>').text(unsafeText).html(),
+        flags = $element.attr('md-highlight-flags') || '',
+        watcher = $scope.$watch(term, function (term) {
+          var regex = getRegExp(term, flags),
+              html = text.replace(regex, '<span class="highlight">$&</span>');
+          $element.html(html);
+        });
+    $element.on('$destroy', function () { watcher(); });
+  }
 
   function sanitize (term) {
     if (!term) return term;
@@ -40020,6 +42100,10 @@ function MdHighlightCtrl ($scope, $element, $interpolate) {
   }
 }
 MdHighlightCtrl.$inject = ["$scope", "$element", "$interpolate"];
+
+})();
+(function(){
+"use strict";
 
 angular
     .module('material.components.autocomplete')
@@ -40058,9 +42142,16 @@ function MdHighlight () {
   return {
     terminal: true,
     scope: false,
-    controller: 'MdHighlightCtrl'
+    controller: 'MdHighlightCtrl',
+    link: function (scope, element, attr, ctrl) {
+      ctrl.init(attr.mdHighlightText);
+    }
   };
 }
+
+})();
+(function(){
+"use strict";
 
 angular
     .module('material.components.autocomplete')
@@ -40086,6 +42177,10 @@ function MdAutocompleteListItem ($compile, $mdUtil) {
 }
 MdAutocompleteListItem.$inject = ["$compile", "$mdUtil"];
 
+})();
+(function(){
+"use strict";
+
 angular
     .module('material.components.autocomplete')
     .directive('mdAutocompleteParentScope', MdAutocompleteParentScope);
@@ -40100,9 +42195,17 @@ function MdAutocompleteParentScope ($compile, $mdUtil) {
   function postLink (scope, element, attr) {
     var ctrl     = scope.$parent.$mdAutocompleteCtrl;
     $compile(element.contents())(ctrl.parent);
+    if (attr.hasOwnProperty('mdAutocompleteReplace')) {
+      element.after(element.contents());
+      element.remove();
+    }
   }
 }
 MdAutocompleteParentScope.$inject = ["$compile", "$mdUtil"];
+
+})();
+(function(){
+"use strict";
 
 angular
     .module('material.components.chips')
@@ -40161,6 +42264,10 @@ function MdChip($mdTheming) {
 }
 MdChip.$inject = ["$mdTheming"];
 
+})();
+(function(){
+"use strict";
+
 angular
     .module('material.components.chips')
     .directive('mdChipRemove', MdChipRemove);
@@ -40215,6 +42322,10 @@ function MdChipRemove ($timeout) {
 }
 MdChipRemove.$inject = ["$timeout"];
 
+})();
+(function(){
+"use strict";
+
 angular
     .module('material.components.chips')
     .directive('mdChipTransclude', MdChipTransclude);
@@ -40237,6 +42348,10 @@ function MdChipTransclude ($compile, $mdUtil) {
   }
 }
 MdChipTransclude.$inject = ["$compile", "$mdUtil"];
+
+})();
+(function(){
+"use strict";
 
 angular
     .module('material.components.chips')
@@ -40389,7 +42504,9 @@ MdChipsCtrl.prototype.getPlaceholder = function() {
 MdChipsCtrl.prototype.removeAndSelectAdjacentChip = function(index) {
   var selIndex = this.getAdjacentChipIndex(index);
   this.removeChip(index);
-  this.$timeout(function () { this.selectAndFocusChipSafe(selIndex); }.bind(this));
+  this.$timeout(angular.bind(this, function () {
+      this.selectAndFocusChipSafe(selIndex);
+  }));
 };
 
 /**
@@ -40576,299 +42693,307 @@ MdChipsCtrl.prototype.configureUserInput = function(inputElement) {
   var ctrl = this;
   inputElement
       .attr({ tabindex: 0 })
-      .on('keydown', function(event) { scope.$apply(function() { ctrl.inputKeydown(event); }); })
-      .on('focus', ctrl.onInputFocus.bind(ctrl) )
-      .on('blur', ctrl.onInputBlur.bind(ctrl) );
+      .on('keydown', function(event) { scope.$apply( angular.bind(ctrl, function() { ctrl.inputKeydown(event); })) })
+      .on('focus', angular.bind(ctrl, ctrl.onInputFocus))
+      .on('blur', angular.bind(ctrl, ctrl.onInputBlur));
 };
 
 MdChipsCtrl.prototype.configureAutocomplete = function(ctrl) {
 
-  ctrl.registerSelectedItemWatcher(function (item) {
+  ctrl.registerSelectedItemWatcher(angular.bind(this, function (item) {
     if (item) {
       this.appendChip(item);
       this.resetChipBuffer();
     }
-  }.bind(this));
+  }));
 
   this.$element.find('input')
-      .on('focus',this.onInputFocus.bind(this) )
-      .on('blur', this.onInputBlur.bind(this) );
+      .on('focus',angular.bind(this, this.onInputFocus) )
+      .on('blur', angular.bind(this, this.onInputBlur) );
 };
 
 MdChipsCtrl.prototype.hasFocus = function () {
   return this.inputHasFocus || this.selectedChip >= 0;
 };
 
-angular
-    .module('material.components.chips')
-    .directive('mdChips', MdChips);
+})();
+(function(){
+"use strict";
 
-/**
- * @ngdoc directive
- * @name mdChips
- * @module material.components.chips
- *
- * @description
- * `<md-chips>` is an input component for building lists of strings or objects. The list items are
- * displayed as 'chips'. This component can make use of an `<input>` element or an
- * `<md-autocomplete>` element.
- *
- * <strong>Custom `<md-chip-template>` template</strong>
- * A custom template may be provided to render the content of each chip. This is achieved by
- * specifying an `<md-chip-template>` element as a child of `<md-chips>`. Note: Any attributes on
- * `<md-chip-template>` will be dropped as only the innerHTML is used for the chip template. The
- * variables `$chip` and `$index` are available in the scope of `<md-chip-template>`, representing
- * the chip object and its index in the list of chips, respectively.
- * To override the chip delete control, include an element (ideally a button) with the attribute
- * `md-chip-remove`. A click listener to remove the chip will be added automatically. The element
- * is also placed as a sibling to the chip content (on which there are also click listeners) to
- * avoid a nested ng-click situation.
- *
- * <h3> Pending Features </h3>
- * <ul style="padding-left:20px;">
- *
- *   <ul>Style
- *     <li>Colours for hover, press states (ripple?).</li>
- *   </ul>
- *
- *   <ul>List Manipulation
- *     <li>delete item via DEL or backspace keys when selected</li>
- *   </ul>
- *
- *   <ul>Validation
- *     <li>de-dupe values (or support duplicates, but fix the ng-repeat duplicate key issue)</li>
- *     <li>allow a validation callback</li>
- *     <li>hilighting style for invalid chips</li>
- *   </ul>
- *
- *   <ul>Item mutation
- *     <li>Support `
- *       <md-chip-edit>` template, show/hide the edit element on tap/click? double tap/double
- *       click?
- *     </li>
- *   </ul>
- *
- *   <ul>Truncation and Disambiguation (?)
- *     <li>Truncate chip text where possible, but do not truncate entries such that two are
- *     indistinguishable.</li>
- *   </ul>
- *
- *   <ul>Drag and Drop
- *     <li>Drag and drop chips between related `<md-chips>` elements.
- *     </li>
- *   </ul>
- * </ul>
- *
- *  <span style="font-size:.8em;text-align:center">
- *    Warning: This component is a WORK IN PROGRESS. If you use it now,
- *    it will probably break on you in the future.
- *  </span>
- *
- * @param {string=|object=} ng-model A model to bind the list of items to
- * @param {string=} placeholder Placeholder text that will be forwarded to the input.
- * @param {string=} secondary-placeholder Placeholder text that will be forwarded to the input,
- *    displayed when there is at least on item in the list
- * @param {boolean=} readonly Disables list manipulation (deleting or adding list items), hiding
- *    the input and delete buttons
- * @param {expression} md-on-append An expression expected to convert the input string into an
- *    object when adding a chip.
- * @param {string=} delete-hint A string read by screen readers instructing users that pressing
- *    the delete key will remove the chip.
- * @param {string=} delete-button-label A label for the delete button. Also hidden and read by
- *    screen readers.
- *
- * @usage
- * <hljs lang="html">
- *   <md-chips
- *       ng-model="myItems"
- *       placeholder="Add an item"
- *       readonly="isReadOnly">
- *   </md-chips>
- * </hljs>
- *
- */
-
-
-var MD_CHIPS_TEMPLATE = '\
-    <md-chips-wrap\
-        ng-if="!$mdChipsCtrl.readonly || $mdChipsCtrl.items.length > 0"\
-        ng-keydown="$mdChipsCtrl.chipKeydown($event)"\
-        ng-class="{ \'md-focused\': $mdChipsCtrl.hasFocus() }"\
-        class="md-chips">\
-      <md-chip ng-repeat="$chip in $mdChipsCtrl.items"\
-          index="{{$index}}"\
-          ng-class="{\'md-focused\': $mdChipsCtrl.selectedChip == $index}">\
-        <div class="md-chip-content"\
-            tabindex="-1"\
-            aria-hidden="true"\
-            ng-focus="!$mdChipsCtrl.readonly && $mdChipsCtrl.selectChip($index)"\
-            md-chip-transclude="$mdChipsCtrl.chipContentsTemplate"></div>\
-        <div class="md-chip-remove-container"\
-            md-chip-transclude="$mdChipsCtrl.chipRemoveTemplate"></div>\
-      </md-chip>\
-      <div ng-if="!$mdChipsCtrl.readonly && $mdChipsCtrl.ngModelCtrl"\
-          class="md-chip-input-container"\
-          md-chip-transclude="$mdChipsCtrl.chipInputTemplate"></div>\
-      </div>\
-    </md-chips-wrap>';
-
-var CHIP_INPUT_TEMPLATE = '\
-      <input\
-          tabindex="0"\
-          placeholder="{{$mdChipsCtrl.getPlaceholder()}}"\
-          aria-label="{{$mdChipsCtrl.getPlaceholder()}}"\
-          ng-model="$mdChipsCtrl.chipBuffer"\
-          ng-focus="$mdChipsCtrl.onInputFocus()"\
-          ng-blur="$mdChipsCtrl.onInputBlur()"\
-          ng-keydown="$mdChipsCtrl.inputKeydown($event)">';
-
-var CHIP_DEFAULT_TEMPLATE = '\
-    <span>{{$chip}}</span>';
-
-var CHIP_REMOVE_TEMPLATE = '\
-    <button\
-        class="md-chip-remove"\
-        ng-if="!$mdChipsCtrl.readonly"\
-        ng-click="$mdChipsCtrl.removeChipAndFocusInput($$replacedScope.$index)"\
-        type="button"\
-        aria-hidden="true"\
-        tabindex="-1">\
-      <md-icon md-svg-icon="md-close"></md-icon>\
-      <span class="md-visually-hidden">\
-        {{$mdChipsCtrl.deleteButtonLabel}}\
-      </span>\
-    </button>';
-
-/**
- * MDChips Directive Definition
- */
-function MdChips ($mdTheming, $mdUtil, $compile, $log, $timeout) {
-  return {
-    template: function(element, attrs) {
-      // Clone the element into an attribute. By prepending the attribute
-      // name with '$', Angular won't write it into the DOM. The cloned
-      // element propagates to the link function via the attrs argument,
-      // where various contained-elements can be consumed.
-      attrs['$mdUserTemplate'] = element.clone();
-      return MD_CHIPS_TEMPLATE;
-    },
-    require: ['mdChips'],
-    restrict: 'E',
-    controller: 'MdChipsCtrl',
-    controllerAs: '$mdChipsCtrl',
-    bindToController: true,
-    compile: compile,
-    scope: {
-      readonly: '=readonly',
-      placeholder: '@',
-      secondaryPlaceholder: '@',
-      mdOnAppend: '&',
-      deleteHint: '@',
-      deleteButtonLabel: '@',
-      requireMatch: '=?mdRequireMatch'
-    }
-  };
+  angular
+      .module('material.components.chips')
+      .directive('mdChips', MdChips);
 
   /**
-   * Builds the final template for `md-chips` and returns the postLink function.
+   * @ngdoc directive
+   * @name mdChips
+   * @module material.components.chips
    *
-   * Building the template involves 3 key components:
-   * static chips
-   * chip template
-   * input control
+   * @description
+   * `<md-chips>` is an input component for building lists of strings or objects. The list items are
+   * displayed as 'chips'. This component can make use of an `<input>` element or an
+   * `<md-autocomplete>` element.
    *
-   * If no `ng-model` is provided, only the static chip work needs to be done.
+   * <strong>Custom `<md-chip-template>` template</strong>
+   * A custom template may be provided to render the content of each chip. This is achieved by
+   * specifying an `<md-chip-template>` element as a child of `<md-chips>`. Note: Any attributes on
+   * `<md-chip-template>` will be dropped as only the innerHTML is used for the chip template. The
+   * variables `$chip` and `$index` are available in the scope of `<md-chip-template>`, representing
+   * the chip object and its index in the list of chips, respectively.
+   * To override the chip delete control, include an element (ideally a button) with the attribute
+   * `md-chip-remove`. A click listener to remove the chip will be added automatically. The element
+   * is also placed as a sibling to the chip content (on which there are also click listeners) to
+   * avoid a nested ng-click situation.
    *
-   * If no user-passed `md-chip-template` exists, the default template is used. This resulting
-   * template is appended to the chip content element.
+   * <h3> Pending Features </h3>
+   * <ul style="padding-left:20px;">
    *
-   * The remove button may be overridden by passing an element with an md-chip-remove attribute.
+   *   <ul>Style
+   *     <li>Colours for hover, press states (ripple?).</li>
+   *   </ul>
    *
-   * If an `input` or `md-autocomplete` element is provided by the caller, it is set aside for
-   * transclusion later. The transclusion happens in `postLink` as the parent scope is required.
-   * If no user input is provided, a default one is appended to the input container node in the
-   * template.
+   *   <ul>List Manipulation
+   *     <li>delete item via DEL or backspace keys when selected</li>
+   *   </ul>
    *
-   * Static Chips (i.e. `md-chip` elements passed from the caller) are gathered and set aside for
-   * transclusion in the `postLink` function.
+   *   <ul>Validation
+   *     <li>de-dupe values (or support duplicates, but fix the ng-repeat duplicate key issue)</li>
+   *     <li>allow a validation callback</li>
+   *     <li>hilighting style for invalid chips</li>
+   *   </ul>
    *
+   *   <ul>Item mutation
+   *     <li>Support `
+   *       <md-chip-edit>` template, show/hide the edit element on tap/click? double tap/double
+   *       click?
+   *     </li>
+   *   </ul>
    *
-   * @param element
-   * @param attr
-   * @returns {Function}
+   *   <ul>Truncation and Disambiguation (?)
+   *     <li>Truncate chip text where possible, but do not truncate entries such that two are
+   *     indistinguishable.</li>
+   *   </ul>
+   *
+   *   <ul>Drag and Drop
+   *     <li>Drag and drop chips between related `<md-chips>` elements.
+   *     </li>
+   *   </ul>
+   * </ul>
+   *
+   *  <span style="font-size:.8em;text-align:center">
+   *    Warning: This component is a WORK IN PROGRESS. If you use it now,
+   *    it will probably break on you in the future.
+   *  </span>
+   *
+   * @param {string=|object=} ng-model A model to bind the list of items to
+   * @param {string=} placeholder Placeholder text that will be forwarded to the input.
+   * @param {string=} secondary-placeholder Placeholder text that will be forwarded to the input,
+   *    displayed when there is at least on item in the list
+   * @param {boolean=} readonly Disables list manipulation (deleting or adding list items), hiding
+   *    the input and delete buttons
+   * @param {expression} md-on-append An expression expected to convert the input string into an
+   *    object when adding a chip.
+   * @param {string=} delete-hint A string read by screen readers instructing users that pressing
+   *    the delete key will remove the chip.
+   * @param {string=} delete-button-label A label for the delete button. Also hidden and read by
+   *    screen readers.
+   *
+   * @usage
+   * <hljs lang="html">
+   *   <md-chips
+   *       ng-model="myItems"
+   *       placeholder="Add an item"
+   *       readonly="isReadOnly">
+   *   </md-chips>
+   * </hljs>
+   *
    */
-  function compile(element, attr) {
-    // Grab the user template from attr and reset the attribute to null.
-    var userTemplate = attr['$mdUserTemplate'];
-    attr['$mdUserTemplate'] = null;
 
-    // Set the chip remove, chip contents and chip input templates. The link function will put
-    // them on the scope for transclusion later.
-    var chipRemoveTemplate   = getTemplateByQuery('md-chips>*[md-chip-remove]') || CHIP_REMOVE_TEMPLATE,
-        chipContentsTemplate = getTemplateByQuery('md-chips>md-chip-template') || CHIP_DEFAULT_TEMPLATE,
-        chipInputTemplate    = getTemplateByQuery('md-chips>md-autocomplete')
-            || getTemplateByQuery('md-chips>input')
-            || CHIP_INPUT_TEMPLATE,
-        staticChips = userTemplate.find('md-chip');
 
-    // Warn of malformed template. See #2545
-    if (userTemplate[0].querySelector('md-chip-template>*[md-chip-remove]')) {
-      $log.warn('invalid placement of md-chip-remove within md-chip-template.');
-    }
+  var MD_CHIPS_TEMPLATE = '\
+      <md-chips-wrap\
+          ng-if="!$mdChipsCtrl.readonly || $mdChipsCtrl.items.length > 0"\
+          ng-keydown="$mdChipsCtrl.chipKeydown($event)"\
+          ng-class="{ \'md-focused\': $mdChipsCtrl.hasFocus() }"\
+          class="md-chips">\
+        <md-chip ng-repeat="$chip in $mdChipsCtrl.items"\
+            index="{{$index}}"\
+            ng-class="{\'md-focused\': $mdChipsCtrl.selectedChip == $index}">\
+          <div class="md-chip-content"\
+              tabindex="-1"\
+              aria-hidden="true"\
+              ng-focus="!$mdChipsCtrl.readonly && $mdChipsCtrl.selectChip($index)"\
+              md-chip-transclude="$mdChipsCtrl.chipContentsTemplate"></div>\
+          <div class="md-chip-remove-container"\
+              md-chip-transclude="$mdChipsCtrl.chipRemoveTemplate"></div>\
+        </md-chip>\
+        <div ng-if="!$mdChipsCtrl.readonly && $mdChipsCtrl.ngModelCtrl"\
+            class="md-chip-input-container"\
+            md-chip-transclude="$mdChipsCtrl.chipInputTemplate"></div>\
+        </div>\
+      </md-chips-wrap>';
 
-    function getTemplateByQuery (query) {
-      if (!attr.ngModel) return;
-      var element = userTemplate[0].querySelector(query);
-      return element && element.outerHTML;
-    }
+  var CHIP_INPUT_TEMPLATE = '\
+        <input\
+            tabindex="0"\
+            placeholder="{{$mdChipsCtrl.getPlaceholder()}}"\
+            aria-label="{{$mdChipsCtrl.getPlaceholder()}}"\
+            ng-model="$mdChipsCtrl.chipBuffer"\
+            ng-focus="$mdChipsCtrl.onInputFocus()"\
+            ng-blur="$mdChipsCtrl.onInputBlur()"\
+            ng-keydown="$mdChipsCtrl.inputKeydown($event)">';
 
-    /**
-     * Configures controller and transcludes.
-     */
-    return function postLink(scope, element, attrs, controllers) {
+  var CHIP_DEFAULT_TEMPLATE = '\
+      <span>{{$chip}}</span>';
 
-      $mdUtil.initOptionalProperties(scope, attr);
+  var CHIP_REMOVE_TEMPLATE = '\
+      <button\
+          class="md-chip-remove"\
+          ng-if="!$mdChipsCtrl.readonly"\
+          ng-click="$mdChipsCtrl.removeChipAndFocusInput($$replacedScope.$index)"\
+          type="button"\
+          aria-hidden="true"\
+          tabindex="-1">\
+        <md-icon md-svg-icon="md-close"></md-icon>\
+        <span class="md-visually-hidden">\
+          {{$mdChipsCtrl.deleteButtonLabel}}\
+        </span>\
+      </button>';
 
-      $mdTheming(element);
-      var mdChipsCtrl = controllers[0];
-      mdChipsCtrl.chipContentsTemplate = chipContentsTemplate;
-      mdChipsCtrl.chipRemoveTemplate   = chipRemoveTemplate;
-      mdChipsCtrl.chipInputTemplate    = chipInputTemplate;
-
-      element
-          .attr({ ariaHidden: true, tabindex: -1 })
-          .on('focus', function () { mdChipsCtrl.onFocus(); });
-
-      if (attr.ngModel) {
-        mdChipsCtrl.configureNgModel(element.controller('ngModel'));
-
-        // If an `md-on-append` attribute was set, tell the controller to use the expression
-        // when appending chips.
-        if (attrs.mdOnAppend) mdChipsCtrl.useMdOnAppendExpression();
-
-        // The md-autocomplete and input elements won't be compiled until after this directive
-        // is complete (due to their nested nature). Wait a tick before looking for them to
-        // configure the controller.
-        if (chipInputTemplate != CHIP_INPUT_TEMPLATE) {
-          $timeout(function() {
-            if (chipInputTemplate.indexOf('<md-autocomplete') === 0)
-              mdChipsCtrl
-                  .configureAutocomplete(element.find('md-autocomplete')
-                      .controller('mdAutocomplete'));
-            mdChipsCtrl.configureUserInput(element.find('input'));
-          });
-        }
-      }
-
-      // Compile with the parent's scope and prepend any static chips to the wrapper.
-      if (staticChips.length > 0) {
-        var compiledStaticChips = $compile(staticChips)(scope.$parent);
-        $timeout(function() { element.find('md-chips-wrap').prepend(compiledStaticChips); });
+  /**
+   * MDChips Directive Definition
+   */
+  function MdChips ($mdTheming, $mdUtil, $compile, $log, $timeout) {
+    return {
+      template: function(element, attrs) {
+        // Clone the element into an attribute. By prepending the attribute
+        // name with '$', Angular won't write it into the DOM. The cloned
+        // element propagates to the link function via the attrs argument,
+        // where various contained-elements can be consumed.
+        var content = attrs['$mdUserTemplate'] = element.clone();
+        return MD_CHIPS_TEMPLATE;
+      },
+      require: ['mdChips'],
+      restrict: 'E',
+      controller: 'MdChipsCtrl',
+      controllerAs: '$mdChipsCtrl',
+      bindToController: true,
+      compile: compile,
+      scope: {
+        readonly: '=readonly',
+        placeholder: '@',
+        secondaryPlaceholder: '@',
+        mdOnAppend: '&',
+        deleteHint: '@',
+        deleteButtonLabel: '@',
+        requireMatch: '=?mdRequireMatch'
       }
     };
+
+    /**
+     * Builds the final template for `md-chips` and returns the postLink function.
+     *
+     * Building the template involves 3 key components:
+     * static chips
+     * chip template
+     * input control
+     *
+     * If no `ng-model` is provided, only the static chip work needs to be done.
+     *
+     * If no user-passed `md-chip-template` exists, the default template is used. This resulting
+     * template is appended to the chip content element.
+     *
+     * The remove button may be overridden by passing an element with an md-chip-remove attribute.
+     *
+     * If an `input` or `md-autocomplete` element is provided by the caller, it is set aside for
+     * transclusion later. The transclusion happens in `postLink` as the parent scope is required.
+     * If no user input is provided, a default one is appended to the input container node in the
+     * template.
+     *
+     * Static Chips (i.e. `md-chip` elements passed from the caller) are gathered and set aside for
+     * transclusion in the `postLink` function.
+     *
+     *
+     * @param element
+     * @param attr
+     * @returns {Function}
+     */
+    function compile(element, attr) {
+      // Grab the user template from attr and reset the attribute to null.
+      var userTemplate = attr['$mdUserTemplate'];
+      attr['$mdUserTemplate'] = null;
+
+      // Set the chip remove, chip contents and chip input templates. The link function will put
+      // them on the scope for transclusion later.
+      var chipRemoveTemplate   = getTemplateByQuery('md-chips>*[md-chip-remove]') || CHIP_REMOVE_TEMPLATE,
+          chipContentsTemplate = getTemplateByQuery('md-chips>md-chip-template') || CHIP_DEFAULT_TEMPLATE,
+          chipInputTemplate    = getTemplateByQuery('md-chips>md-autocomplete')
+              || getTemplateByQuery('md-chips>input')
+              || CHIP_INPUT_TEMPLATE,
+          staticChips = userTemplate.find('md-chip');
+
+      // Warn of malformed template. See #2545
+      if (userTemplate[0].querySelector('md-chip-template>*[md-chip-remove]')) {
+        $log.warn('invalid placement of md-chip-remove within md-chip-template.');
+      }
+
+      function getTemplateByQuery (query) {
+        if (!attr.ngModel) return;
+        var element = userTemplate[0].querySelector(query);
+        return element && element.outerHTML;
+      }
+
+      /**
+       * Configures controller and transcludes.
+       */
+      return function postLink(scope, element, attrs, controllers) {
+
+        $mdUtil.initOptionalProperties(scope, attr);
+
+        $mdTheming(element);
+        var mdChipsCtrl = controllers[0];
+        mdChipsCtrl.chipContentsTemplate = chipContentsTemplate;
+        mdChipsCtrl.chipRemoveTemplate   = chipRemoveTemplate;
+        mdChipsCtrl.chipInputTemplate    = chipInputTemplate;
+
+        element
+            .attr({ ariaHidden: true, tabindex: -1 })
+            .on('focus', function () { mdChipsCtrl.onFocus(); });
+
+        if (attr.ngModel) {
+          mdChipsCtrl.configureNgModel(element.controller('ngModel'));
+
+          // If an `md-on-append` attribute was set, tell the controller to use the expression
+          // when appending chips.
+          if (attrs.mdOnAppend) mdChipsCtrl.useMdOnAppendExpression();
+
+          // The md-autocomplete and input elements won't be compiled until after this directive
+          // is complete (due to their nested nature). Wait a tick before looking for them to
+          // configure the controller.
+          if (chipInputTemplate != CHIP_INPUT_TEMPLATE) {
+            $timeout(function() {
+              if (chipInputTemplate.indexOf('<md-autocomplete') === 0)
+                mdChipsCtrl
+                    .configureAutocomplete(element.find('md-autocomplete')
+                        .controller('mdAutocomplete'));
+              mdChipsCtrl.configureUserInput(element.find('input'));
+            });
+          }
+        }
+
+        // Compile with the parent's scope and prepend any static chips to the wrapper.
+        if (staticChips.length > 0) {
+          var compiledStaticChips = $compile(staticChips)(scope.$parent);
+          $timeout(function() { element.find('md-chips-wrap').prepend(compiledStaticChips); });
+        }
+      };
+    }
   }
-}
-MdChips.$inject = ["$mdTheming", "$mdUtil", "$compile", "$log", "$timeout"];
+  MdChips.$inject = ["$mdTheming", "$mdUtil", "$compile", "$log", "$timeout"];
+
+})();
+(function(){
+"use strict";
 
 angular
     .module('material.components.chips')
@@ -40891,7 +43016,8 @@ function MdContactChipsCtrl () {
 
 MdContactChipsCtrl.prototype.queryContact = function(searchText) {
   var results = this.contactQuery({'$query': searchText});
-  return results.filter(this.filterSelectedContacts.bind(this));
+  return this.filterSelected ?
+      results.filter(angular.bind(this, this.filterSelectedContacts)) : results;
 };
 
 
@@ -40899,134 +43025,142 @@ MdContactChipsCtrl.prototype.filterSelectedContacts = function(contact) {
   return this.contacts.indexOf(contact) == -1;
 };
 
-angular
-    .module('material.components.chips')
-    .directive('mdContactChips', MdContactChips);
+})();
+(function(){
+"use strict";
 
-/**
- * @ngdoc directive
- * @name mdContactChips
- * @module material.components.chips
- *
- * @description
- * `<md-contact-chips>` is an input component based on `md-chips` and makes use of an
- *    `md-autocomplete` element. The component allows the caller to supply a query expression
- *    which returns  a list of possible contacts. The user can select one of these and add it to
- *    the list of chips.
- *
- * @param {string=|object=} ng-model A model to bind the list of items to
- * @param {string=} placeholder Placeholder text that will be forwarded to the input.
- * @param {string=} secondary-placeholder Placeholder text that will be forwarded to the input,
- *    displayed when there is at least on item in the list
- * @param {expression} md-contacts An expression expected to return contacts matching the search
- *    test, `$query`.
- * @param {string} md-contact-name The field name of the contact object representing the
- *    contact's name.
- * @param {string} md-contact-email The field name of the contact object representing the
- *    contact's email address.
- * @param {string} md-contact-image The field name of the contact object representing the
- *    contact's image.
- *
- *
- * // The following attribute has been removed but may come back.
- * @param {expression=} filter-selected Whether to filter selected contacts from the list of
- *    suggestions shown in the autocomplete.
- *
- *
- *
- * @usage
- * <hljs lang="html">
- *   <md-contact-chips
- *       ng-model="ctrl.contacts"
- *       md-contacts="ctrl.querySearch($query)"
- *       md-contact-name="name"
- *       md-contact-image="image"
- *       md-contact-email="email"
- *       placeholder="To">
- *   </md-contact-chips>
- * </hljs>
- *
- */
+  angular
+      .module('material.components.chips')
+      .directive('mdContactChips', MdContactChips);
 
-
-var MD_CONTACT_CHIPS_TEMPLATE = '\
-    <md-chips class="md-contact-chips"\
-        ng-model="$mdContactChipsCtrl.contacts"\
-        md-require-match="$mdContactChipsCtrl.requireMatch"\
-        md-autocomplete-snap>\
-        <md-autocomplete\
-            md-menu-class="md-contact-chips-suggestions"\
-            md-selected-item="$mdContactChipsCtrl.selectedItem"\
-            md-search-text="$mdContactChipsCtrl.searchText"\
-            md-items="item in $mdContactChipsCtrl.queryContact($mdContactChipsCtrl.searchText)"\
-            md-item-text="$mdContactChipsCtrl.mdContactName"\
-            md-no-cache="true"\
-            md-autoselect\
-            placeholder="{{$mdContactChipsCtrl.contacts.length == 0 ?\
-                $mdContactChipsCtrl.placeholder : $mdContactChipsCtrl.secondaryPlaceholder}}">\
-          <div class="md-contact-suggestion">\
-            <img \
-                ng-src="{{item[$mdContactChipsCtrl.contactImage]}}"\
-                alt="{{item[$mdContactChipsCtrl.contactName]}}" />\
-            <span class="md-contact-name" md-highlight-text="$mdContactChipsCtrl.searchText">\
-              {{item[$mdContactChipsCtrl.contactName]}}\
-            </span>\
-            <span class="md-contact-email" >{{item[$mdContactChipsCtrl.contactEmail]}}</span>\
-          </div>\
-        </md-autocomplete>\
-        <md-chip-template>\
-          <div class="md-contact-avatar">\
-            <img \
-                ng-src="{{$chip[$mdContactChipsCtrl.contactImage]}}"\
-                alt="{{$chip[$mdContactChipsCtrl.contactName]}}" />\
-          </div>\
-          <div class="md-contact-name">\
-            {{$chip[$mdContactChipsCtrl.contactName]}}\
-          </div>\
-        </md-chip-template>\
-    </md-chips>';
+  /**
+   * @ngdoc directive
+   * @name mdContactChips
+   * @module material.components.chips
+   *
+   * @description
+   * `<md-contact-chips>` is an input component based on `md-chips` and makes use of an
+   *    `md-autocomplete` element. The component allows the caller to supply a query expression
+   *    which returns  a list of possible contacts. The user can select one of these and add it to
+   *    the list of chips.
+   *
+   * @param {string=|object=} ng-model A model to bind the list of items to
+   * @param {string=} placeholder Placeholder text that will be forwarded to the input.
+   * @param {string=} secondary-placeholder Placeholder text that will be forwarded to the input,
+   *    displayed when there is at least on item in the list
+   * @param {expression} md-contacts An expression expected to return contacts matching the search
+   *    test, `$query`.
+   * @param {string} md-contact-name The field name of the contact object representing the
+   *    contact's name.
+   * @param {string} md-contact-email The field name of the contact object representing the
+   *    contact's email address.
+   * @param {string} md-contact-image The field name of the contact object representing the
+   *    contact's image.
+   *
+   *
+   * // The following attribute has been removed but may come back.
+   * @param {expression=} filter-selected Whether to filter selected contacts from the list of
+   *    suggestions shown in the autocomplete.
+   *
+   *
+   *
+   * @usage
+   * <hljs lang="html">
+   *   <md-contact-chips
+   *       ng-model="ctrl.contacts"
+   *       md-contacts="ctrl.querySearch($query)"
+   *       md-contact-name="name"
+   *       md-contact-image="image"
+   *       md-contact-email="email"
+   *       placeholder="To">
+   *   </md-contact-chips>
+   * </hljs>
+   *
+   */
 
 
-/**
- * MDContactChips Directive Definition
- *
- * @param $mdTheming
- * @returns {*}
- * @ngInject
- */
-function MdContactChips ($mdTheming, $mdUtil) {
-  return {
-    template: function(element, attrs) {
-      return MD_CONTACT_CHIPS_TEMPLATE;
-    },
-    restrict: 'E',
-    controller: 'MdContactChipsCtrl',
-    controllerAs: '$mdContactChipsCtrl',
-    bindToController: true,
-    compile: compile,
-    scope: {
-      contactQuery: '&mdContacts',
-      placeholder: '@',
-      secondaryPlaceholder: '@',
-      contactName: '@mdContactName',
-      contactImage: '@mdContactImage',
-      contactEmail: '@mdContactEmail',
-      contacts: '=ngModel',
-      requireMatch: '=?mdRequireMatch'
-    }
-  };
+  var MD_CONTACT_CHIPS_TEMPLATE = '\
+      <md-chips class="md-contact-chips"\
+          ng-model="$mdContactChipsCtrl.contacts"\
+          md-require-match="$mdContactChipsCtrl.requireMatch"\
+          md-autocomplete-snap>\
+          <md-autocomplete\
+              md-menu-class="md-contact-chips-suggestions"\
+              md-selected-item="$mdContactChipsCtrl.selectedItem"\
+              md-search-text="$mdContactChipsCtrl.searchText"\
+              md-items="item in $mdContactChipsCtrl.queryContact($mdContactChipsCtrl.searchText)"\
+              md-item-text="$mdContactChipsCtrl.mdContactName"\
+              md-no-cache="true"\
+              md-autoselect\
+              placeholder="{{$mdContactChipsCtrl.contacts.length == 0 ?\
+                  $mdContactChipsCtrl.placeholder : $mdContactChipsCtrl.secondaryPlaceholder}}">\
+            <div class="md-contact-suggestion">\
+              <img \
+                  ng-src="{{item[$mdContactChipsCtrl.contactImage]}}"\
+                  alt="{{item[$mdContactChipsCtrl.contactName]}}" />\
+              <span class="md-contact-name" md-highlight-text="$mdContactChipsCtrl.searchText">\
+                {{item[$mdContactChipsCtrl.contactName]}}\
+              </span>\
+              <span class="md-contact-email" >{{item[$mdContactChipsCtrl.contactEmail]}}</span>\
+            </div>\
+          </md-autocomplete>\
+          <md-chip-template>\
+            <div class="md-contact-avatar">\
+              <img \
+                  ng-src="{{$chip[$mdContactChipsCtrl.contactImage]}}"\
+                  alt="{{$chip[$mdContactChipsCtrl.contactName]}}" />\
+            </div>\
+            <div class="md-contact-name">\
+              {{$chip[$mdContactChipsCtrl.contactName]}}\
+            </div>\
+          </md-chip-template>\
+      </md-chips>';
 
-  function compile(element, attr) {
-    return function postLink(scope, element, attrs, controllers) {
 
-      $mdUtil.initOptionalProperties(scope, attr);
-      $mdTheming(element);
-
-      element.attr('tabindex', '-1');
+  /**
+   * MDContactChips Directive Definition
+   *
+   * @param $mdTheming
+   * @returns {*}
+   * @ngInject
+   */
+  function MdContactChips ($mdTheming, $mdUtil) {
+    return {
+      template: function(element, attrs) {
+        return MD_CONTACT_CHIPS_TEMPLATE;
+      },
+      restrict: 'E',
+      controller: 'MdContactChipsCtrl',
+      controllerAs: '$mdContactChipsCtrl',
+      bindToController: true,
+      compile: compile,
+      scope: {
+        contactQuery: '&mdContacts',
+        placeholder: '@',
+        secondaryPlaceholder: '@',
+        contactName: '@mdContactName',
+        contactImage: '@mdContactImage',
+        contactEmail: '@mdContactEmail',
+        contacts: '=ngModel',
+        requireMatch: '=?mdRequireMatch'
+      }
     };
+
+    function compile(element, attr) {
+      return function postLink(scope, element, attrs, controllers) {
+
+        $mdUtil.initOptionalProperties(scope, attr);
+        $mdTheming(element);
+
+        element.attr('tabindex', '-1');
+      };
+    }
   }
-}
-MdContactChips.$inject = ["$mdTheming", "$mdUtil"];
+  MdContactChips.$inject = ["$mdTheming", "$mdUtil"];
+
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc directive
@@ -41089,8 +43223,34 @@ function MdTab () {
   return {
     require: '^?mdTabs',
     terminal: true,
+    template: function (element, attr) {
+      var label = getLabel(),
+          body  = getTemplate();
+      return '' +
+          '<md-tab-label>' + label + '</md-tab-label>' +
+          '<md-tab-body>' + body + '</md-tab-body>';
+      function getLabel () {
+        return getLabelElement() || getLabelAttribute() || getElementContents();
+        function getLabelAttribute () { return attr.label; }
+        function getLabelElement () {
+          var label = element.find('md-tab-label').eq(0);
+          if (label.length) return label.remove().html();
+        }
+        function getElementContents () {
+          var html = element.html();
+          element.empty();
+          return html;
+        }
+      }
+      function getTemplate () {
+        var content = element.find('md-tab-body').eq(0),
+            template = content.length ? content.html() : attr.label ? element.html() : '';
+        if (content.length) content.remove();
+        else if (attr.label) element.empty();
+        return template;
+      }
+    },
     scope: {
-      label:    '@',
       active:   '=?mdActive',
       disabled: '=?ngDisabled',
       select:   '&?mdOnSelect',
@@ -41103,12 +43263,15 @@ function MdTab () {
     if (!ctrl) return;
     var tabs = element.parent()[0].getElementsByTagName('md-tab'),
         index = Array.prototype.indexOf.call(tabs, element[0]),
+        body = element.find('md-tab-body').eq(0).remove(),
+        label = element.find('md-tab-label').eq(0).remove(),
         data = ctrl.insertTab({
           scope:    scope,
           parent:   scope.$parent,
           index:    index,
-          template: getTemplate(),
-          label:    getLabel()
+          element:  element,
+          template: body.html(),
+          label:    label.html()
         }, index);
 
     scope.select   = scope.select   || angular.noop;
@@ -41127,42 +43290,43 @@ function MdTab () {
     );
     scope.$on('$destroy', function () { ctrl.removeTab(data); });
 
-    function getLabel () {
-      var label = attr.label || (element.find('md-tab-label')[0] || element[0]).innerHTML;
-      return getLabelAttribute() || getLabelElement() || getElementContents();
-      function getLabelAttribute () { return attr.label; }
-      function getLabelElement () {
-        var label = element.find('md-tab-label');
-        if (label.length) return label.remove().html();
-      }
-      function getElementContents () {
-        var html = element.html();
-        element.empty();
-        return html;
-      }
-    }
-
-    function getTemplate () {
-      var content = element.find('md-tab-body'),
-          template = content.length ? content.html() : attr.label ? element.html() : null;
-      if (content.length) content.remove();
-      else if (attr.label) element.empty();
-      return template;
-    }
   }
 }
+
+})();
+(function(){
+"use strict";
 
 angular
     .module('material.components.tabs')
     .directive('mdTabItem', MdTabItem);
 
 function MdTabItem () {
-  return { require: '^?mdTabs', link: link };
-  function link (scope, element, attr, ctrl) {
-    if (!ctrl) return;
-    ctrl.attachRipple(scope, element);
-  }
+  return {
+    require: '^?mdTabs',
+    link: function link (scope, element, attr, ctrl) {
+      if (!ctrl) return;
+      ctrl.attachRipple(scope, element);
+    }
+  };
 }
+
+})();
+(function(){
+"use strict";
+
+angular
+    .module('material.components.tabs')
+    .directive('mdTabLabel', MdTabLabel);
+
+function MdTabLabel () {
+  return { terminal: true };
+}
+
+
+})();
+(function(){
+"use strict";
 
 angular.module('material.components.tabs')
     .directive('mdTabScroll', MdTabScroll);
@@ -41182,32 +43346,46 @@ function MdTabScroll ($parse) {
 }
 MdTabScroll.$inject = ["$parse"];
 
+})();
+(function(){
+"use strict";
+
 angular
     .module('material.components.tabs')
     .controller('MdTabsController', MdTabsController);
 
-function MdTabsController ($scope, $element, $window, $timeout, $mdConstant, $mdInkRipple,
-                           $mdUtil, $animate) {
-  var ctrl     = this,
-      locked   = false,
-      elements = getElements(),
-      queue    = [];
+/**
+ * @ngInject
+ */
+function MdTabsController ($scope, $element, $window, $timeout, $mdConstant, $mdTabInkRipple,
+                           $mdUtil, $animate, $attrs, $compile, $mdTheming) {
+  //-- define private properties
+  var ctrl       = this,
+      locked     = false,
+      elements   = getElements(),
+      queue      = [],
+      destroyed  = false,
+      loaded     = false;
 
+  //-- define public properties with change handlers
+  defineProperty('focusIndex', handleFocusIndexChange, $scope.selectedIndex || 0);
+  defineProperty('offsetLeft', handleOffsetChange, 0);
+  defineProperty('hasContent', handleHasContent, false);
+
+  //-- define public properties
   ctrl.scope = $scope;
   ctrl.parent = $scope.$parent;
   ctrl.tabs = [];
   ctrl.lastSelectedIndex = null;
-  ctrl.focusIndex = 0;
-  ctrl.offsetLeft = 0;
-  ctrl.hasContent = false;
   ctrl.hasFocus = false;
   ctrl.lastClick = true;
+  ctrl.shouldPaginate = false;
+  ctrl.shouldCenterTabs = shouldCenterTabs();
 
+  //-- define public methods
   ctrl.redirectFocus = redirectFocus;
   ctrl.attachRipple = attachRipple;
   ctrl.shouldStretchTabs = shouldStretchTabs;
-  ctrl.shouldPaginate = shouldPaginate;
-  ctrl.shouldCenterTabs = shouldCenterTabs;
   ctrl.insertTab = insertTab;
   ctrl.removeTab = removeTab;
   ctrl.select = select;
@@ -41219,43 +43397,145 @@ function MdTabsController ($scope, $element, $window, $timeout, $mdConstant, $md
   ctrl.canPageBack = canPageBack;
   ctrl.refreshIndex = refreshIndex;
   ctrl.incrementSelectedIndex = incrementSelectedIndex;
-  ctrl.updateInkBarStyles = updateInkBarStyles;
+  ctrl.updateInkBarStyles = $mdUtil.debounce(updateInkBarStyles, 100);
   ctrl.updateTabOrder = $mdUtil.debounce(updateTabOrder, 100);
 
   init();
 
+  /**
+   * Perform initialization for the controller, setup events and watcher(s)
+   */
   function init () {
-    $scope.$watch('selectedIndex', handleSelectedIndexChange);
-    $scope.$watch('$mdTabsCtrl.focusIndex', handleFocusIndexChange);
-    $scope.$watch('$mdTabsCtrl.offsetLeft', handleOffsetChange);
-    $scope.$watch('$mdTabsCtrl.hasContent', handleHasContent);
-    angular.element($window).on('resize', function () { $scope.$apply(handleWindowResize); });
-    $timeout(updateInkBarStyles, 0, false);
-    $timeout(updateHeightFromContent, 0, false);
+    $scope.selectedIndex = $scope.selectedIndex || 0;
+    compileTemplate();
+    configureWatchers();
+    bindEvents();
+    $mdTheming($element);
+    $timeout(function () {
+      updateHeightFromContent();
+      adjustOffset();
+      updatePagination();
+      ctrl.tabs[$scope.selectedIndex] && ctrl.tabs[$scope.selectedIndex].scope.select();
+      loaded = true;
+    });
   }
 
+  function compileTemplate () {
+    var template = $attrs.$mdTabsTemplate,
+        element  = angular.element(elements.data);
+    element.html(template);
+    $compile(element.contents())(ctrl.parent);
+    delete $attrs.$mdTabsTemplate;
+  }
+
+  function bindEvents () {
+    angular.element($window).on('resize', handleWindowResize);
+    angular.element(elements.paging).on('DOMSubtreeModified', ctrl.updateInkBarStyles);
+    angular.element(elements.paging).on('DOMSubtreeModified', updatePagination);
+  }
+
+  function configureWatchers () {
+    $mdUtil.initOptionalProperties($scope, $attrs);
+    $attrs.$observe('mdNoBar', function (value) { $scope.noInkBar = angular.isDefined(value); });
+    $scope.$watch('selectedIndex', handleSelectedIndexChange);
+    $scope.$watch('dynamicHeight', function (value) {
+      if (value) $element.addClass('md-dynamic-height');
+      else $element.removeClass('md-dynamic-height');
+    });
+    $scope.$on('$destroy', cleanup);
+  }
+
+  /**
+   * Remove any events defined by this controller
+   */
+  function cleanup () {
+    destroyed = true;
+    angular.element($window).off('resize', handleWindowResize);
+    angular.element(elements.paging).off('DOMSubtreeModified', ctrl.updateInkBarStyles);
+    angular.element(elements.paging).off('DOMSubtreeModified', updatePagination);
+  }
+
+  //-- Change handlers
+
+  /**
+   * Add/remove the `md-no-tab-content` class depending on `ctrl.hasContent`
+   * @param hasContent
+   */
   function handleHasContent (hasContent) {
     $element[hasContent ? 'removeClass' : 'addClass']('md-no-tab-content');
   }
 
-  function getElements () {
-    var elements      = {};
-
-    //-- gather tab bar elements
-    elements.wrapper  = $element[0].getElementsByTagName('md-tabs-wrapper')[0];
-    elements.canvas   = elements.wrapper.getElementsByTagName('md-tabs-canvas')[0];
-    elements.paging   = elements.canvas.getElementsByTagName('md-pagination-wrapper')[0];
-    elements.tabs     = elements.paging.getElementsByTagName('md-tab-item');
-    elements.dummies  = elements.canvas.getElementsByTagName('md-dummy-tab');
-    elements.inkBar   = elements.paging.getElementsByTagName('md-ink-bar')[0];
-
-    //-- gather tab content elements
-    elements.contentsWrapper = $element[0].getElementsByTagName('md-tabs-content-wrapper')[0];
-    elements.contents = elements.contentsWrapper.getElementsByTagName('md-tab-content');
-
-    return elements;
+  /**
+   * Apply ctrl.offsetLeft to the paging element when it changes
+   * @param left
+   */
+  function handleOffsetChange (left) {
+    var newValue = ctrl.shouldCenterTabs ? '' : '-' + left + 'px';
+    angular.element(elements.paging).css($mdConstant.CSS.TRANSFORM, 'translate3d(' + newValue + ', 0, 0)');
+    $scope.$broadcast('$mdTabsPaginationChanged');
   }
 
+  /**
+   * Update the UI whenever `ctrl.focusIndex` is updated
+   * @param newIndex
+   * @param oldIndex
+   */
+  function handleFocusIndexChange (newIndex, oldIndex) {
+    if (newIndex === oldIndex) return;
+    if (!elements.tabs[newIndex]) return;
+    adjustOffset();
+    redirectFocus();
+  }
+
+  /**
+   * Update the UI whenever the selected index changes. Calls user-defined select/deselect methods.
+   * @param newValue
+   * @param oldValue
+   */
+  function handleSelectedIndexChange (newValue, oldValue) {
+    if (newValue === oldValue) return;
+
+    $scope.selectedIndex = getNearestSafeIndex(newValue);
+    ctrl.lastSelectedIndex = oldValue;
+    ctrl.updateInkBarStyles();
+    updateHeightFromContent();
+    adjustOffset(newValue);
+    $scope.$broadcast('$mdTabsChanged');
+    ctrl.tabs[oldValue] && ctrl.tabs[oldValue].scope.deselect();
+    ctrl.tabs[newValue] && ctrl.tabs[newValue].scope.select();
+  }
+
+  /**
+   * Queues up a call to `handleWindowResize` when a resize occurs while the tabs component is
+   * hidden.
+   */
+  function handleResizeWhenVisible () {
+    //-- if there is already a watcher waiting for resize, do nothing
+    if (handleResizeWhenVisible.watcher) return;
+    //-- otherwise, we will abuse the $watch function to check for visible
+    handleResizeWhenVisible.watcher = $scope.$watch(function () {
+      //-- since we are checking for DOM size, we use $timeout to wait for after the DOM updates
+      $timeout(function () {
+        //-- if the watcher has already run (ie. multiple digests in one cycle), do nothing
+        if (!handleResizeWhenVisible.watcher) return;
+
+        if ($element.prop('offsetParent')) {
+          handleResizeWhenVisible.watcher();
+          handleResizeWhenVisible.watcher = null;
+
+          //-- we have to trigger our own $apply so that the DOM bindings will update
+          handleWindowResize();
+        }
+      }, 0, false);
+    });
+  }
+
+  //-- Event handlers / actions
+
+  /**
+   * Handle user keyboard interactions
+   * @param event
+   */
   function keydown (event) {
     switch (event.keyCode) {
       case $mdConstant.KEY_CODE.LEFT_ARROW:
@@ -41275,73 +43555,100 @@ function MdTabsController ($scope, $element, $window, $timeout, $mdConstant, $md
     ctrl.lastClick = false;
   }
 
-  function updateTabOrder () {
-    var selectedItem = ctrl.tabs[$scope.selectedIndex],
-        focusItem = ctrl.tabs[ctrl.focusIndex];
-    ctrl.tabs = ctrl.tabs.sort(function (a, b) {
-      return a.index - b.index;
-    });
-    $scope.selectedIndex = ctrl.tabs.indexOf(selectedItem);
-    ctrl.focusIndex = ctrl.tabs.indexOf(focusItem);
-    $timeout(updateInkBarStyles, 0, false);
+  /**
+   * Update the selected index and trigger a click event on the original `md-tab` element in order
+   * to fire user-added click events.
+   * @param index
+   */
+  function select (index) {
+    if (!locked) ctrl.focusIndex = $scope.selectedIndex = index;
+    ctrl.lastClick = true;
+    ctrl.tabs[index].element.triggerHandler('click');
   }
 
-  function incrementSelectedIndex (inc, focus) {
-    var newIndex,
-        index = focus ? ctrl.focusIndex : $scope.selectedIndex;
-    for (newIndex = index + inc;
-         ctrl.tabs[newIndex] && ctrl.tabs[newIndex].scope.disabled;
-         newIndex += inc) {}
-    if (ctrl.tabs[newIndex]) {
-      if (focus) ctrl.focusIndex = newIndex;
-      else $scope.selectedIndex = newIndex;
+  /**
+   * When pagination is on, this makes sure the selected index is in view.
+   * @param event
+   */
+  function scroll (event) {
+    if (!ctrl.shouldPaginate) return;
+    event.preventDefault();
+    ctrl.offsetLeft = fixOffset(ctrl.offsetLeft - event.wheelDelta);
+  }
+
+  /**
+   * Slides the tabs over approximately one page forward.
+   */
+  function nextPage () {
+    var viewportWidth = elements.canvas.clientWidth,
+        totalWidth = viewportWidth + ctrl.offsetLeft,
+        i, tab;
+    for (i = 0; i < elements.tabs.length; i++) {
+      tab = elements.tabs[i];
+      if (tab.offsetLeft + tab.offsetWidth > totalWidth) break;
     }
+    ctrl.offsetLeft = fixOffset(tab.offsetLeft);
   }
 
-  function handleOffsetChange (left) {
-    var newValue = shouldCenterTabs() ? '' : '-' + left + 'px';
-    angular.element(elements.paging).css('left', newValue);
-    $scope.$broadcast('$mdTabsPaginationChanged');
+  /**
+   * Slides the tabs over approximately one page backward.
+   */
+  function previousPage () {
+    var i, tab;
+    for (i = 0; i < elements.tabs.length; i++) {
+      tab = elements.tabs[i];
+      if (tab.offsetLeft + tab.offsetWidth >= ctrl.offsetLeft) break;
+    }
+    ctrl.offsetLeft = fixOffset(tab.offsetLeft + tab.offsetWidth - elements.canvas.clientWidth);
   }
 
-  function handleFocusIndexChange (newIndex, oldIndex) {
-    if (newIndex === oldIndex) return;
-    if (!elements.tabs[newIndex]) return;
-    adjustOffset();
-    redirectFocus();
-  }
-
-  function redirectFocus () {
-    elements.dummies[ctrl.focusIndex].focus();
-  }
-
-  function adjustOffset () {
-    if (shouldCenterTabs()) return;
-    var tab = elements.tabs[ctrl.focusIndex],
-        left = tab.offsetLeft,
-        right = tab.offsetWidth + left;
-    ctrl.offsetLeft = Math.max(ctrl.offsetLeft, fixOffset(right - elements.canvas.clientWidth));
-    ctrl.offsetLeft = Math.min(ctrl.offsetLeft, fixOffset(left));
-  }
-
+  /**
+   * Update size calculations when the window is resized.
+   */
   function handleWindowResize () {
-    ctrl.lastSelectedIndex = $scope.selectedIndex;
-    ctrl.offsetLeft = fixOffset(ctrl.offsetLeft);
-    $timeout(updateInkBarStyles, 0, false);
+    $scope.$apply(function () {
+      ctrl.lastSelectedIndex = $scope.selectedIndex;
+      ctrl.offsetLeft = fixOffset(ctrl.offsetLeft);
+      $timeout(ctrl.updateInkBarStyles, 0, false);
+      $timeout(updatePagination);
+    });
   }
 
-  function processQueue () {
-    queue.forEach(function (func) { $timeout(func); });
-    queue = [];
+  /**
+   * Remove a tab from the data and select the nearest valid tab.
+   * @param tabData
+   */
+  function removeTab (tabData) {
+    var selectedIndex = $scope.selectedIndex,
+        tab = ctrl.tabs.splice(tabData.getIndex(), 1)[0];
+    refreshIndex();
+    //-- when removing a tab, if the selected index did not change, we have to manually trigger the
+    //   tab select/deselect events
+    if ($scope.selectedIndex === selectedIndex && !destroyed) {
+      tab.scope.deselect();
+      ctrl.tabs[$scope.selectedIndex] && ctrl.tabs[$scope.selectedIndex].scope.select();
+    }
+    $timeout(function () {
+      updatePagination();
+      ctrl.offsetLeft = fixOffset(ctrl.offsetLeft);
+    });
   }
 
+  /**
+   * Create an entry in the tabs array for a new tab at the specified index.
+   * @param tabData
+   * @param index
+   * @returns {*}
+   */
   function insertTab (tabData, index) {
     var proto = {
           getIndex: function () { return ctrl.tabs.indexOf(tab); },
           isActive: function () { return this.getIndex() === $scope.selectedIndex; },
           isLeft:   function () { return this.getIndex() < $scope.selectedIndex; },
           isRight:  function () { return this.getIndex() > $scope.selectedIndex; },
-          hasFocus: function () { return !ctrl.lastClick && ctrl.hasFocus && this.getIndex() === ctrl.focusIndex; },
+          shouldRender: function () { return !$scope.noDisconnect || this.isActive(); },
+          hasFocus: function () { return !ctrl.lastClick
+              && ctrl.hasFocus && this.getIndex() === ctrl.focusIndex; },
           id:       $mdUtil.nextUid()
         },
         tab = angular.extend(proto, tabData);
@@ -41352,9 +43659,198 @@ function MdTabsController ($scope, $element, $window, $timeout, $mdConstant, $md
     }
     processQueue();
     updateHasContent();
+    //-- if autoselect is enabled, select the newly added tab
+    if (loaded && $scope.autoselect) $timeout(function () { select(ctrl.tabs.indexOf(tab)); });
+    $timeout(updatePagination);
     return tab;
   }
 
+  //-- Getter methods
+
+  /**
+   * Gathers references to all of the DOM elements used by this controller.
+   * @returns {{}}
+   */
+  function getElements () {
+    var elements      = {};
+
+    //-- gather tab bar elements
+    elements.wrapper  = $element[0].getElementsByTagName('md-tabs-wrapper')[0];
+    elements.data     = $element[0].getElementsByTagName('md-tab-data')[0];
+    elements.canvas   = elements.wrapper.getElementsByTagName('md-tabs-canvas')[0];
+    elements.paging   = elements.canvas.getElementsByTagName('md-pagination-wrapper')[0];
+    elements.tabs     = elements.paging.getElementsByTagName('md-tab-item');
+    elements.dummies  = elements.canvas.getElementsByTagName('md-dummy-tab');
+    elements.inkBar   = elements.paging.getElementsByTagName('md-ink-bar')[0];
+
+    //-- gather tab content elements
+    elements.contentsWrapper = $element[0].getElementsByTagName('md-tabs-content-wrapper')[0];
+    elements.contents = elements.contentsWrapper.getElementsByTagName('md-tab-content');
+
+    return elements;
+  }
+
+  /**
+   * Determines whether or not the left pagination arrow should be enabled.
+   * @returns {boolean}
+   */
+  function canPageBack () {
+    return ctrl.offsetLeft > 0;
+  }
+
+  /**
+   * Determines whether or not the right pagination arrow should be enabled.
+   * @returns {*|boolean}
+   */
+  function canPageForward () {
+    var lastTab = elements.tabs[elements.tabs.length - 1];
+    return lastTab && lastTab.offsetLeft + lastTab.offsetWidth > elements.canvas.clientWidth +
+        ctrl.offsetLeft;
+  }
+
+  /**
+   * Determines if the UI should stretch the tabs to fill the available space.
+   * @returns {*}
+   */
+  function shouldStretchTabs () {
+    switch ($scope.stretchTabs) {
+      case 'always': return true;
+      case 'never':  return false;
+      default:       return !ctrl.shouldPaginate
+          && $window.matchMedia('(max-width: 600px)').matches;
+    }
+  }
+
+  /**
+   * Determines if the tabs should appear centered.
+   * @returns {string|boolean}
+   */
+  function shouldCenterTabs () {
+    return $scope.centerTabs && !ctrl.shouldPaginate;
+  }
+
+  /**
+   * Determines if pagination is necessary to display the tabs within the available space.
+   * @returns {boolean}
+   */
+  function shouldPaginate () {
+    if ($scope.noPagination || !loaded) return false;
+    var canvasWidth = $element.prop('clientWidth');
+    angular.forEach(elements.dummies, function (tab) { canvasWidth -= tab.offsetWidth; });
+    return canvasWidth < 0;
+  }
+
+  /**
+   * Finds the nearest tab index that is available.  This is primarily used for when the active
+   * tab is removed.
+   * @param newIndex
+   * @returns {*}
+   */
+  function getNearestSafeIndex(newIndex) {
+    var maxOffset = Math.max(ctrl.tabs.length - newIndex, newIndex),
+        i, tab;
+    for (i = 0; i <= maxOffset; i++) {
+      tab = ctrl.tabs[newIndex + i];
+      if (tab && (tab.scope.disabled !== true)) return tab.getIndex();
+      tab = ctrl.tabs[newIndex - i];
+      if (tab && (tab.scope.disabled !== true)) return tab.getIndex();
+    }
+    return newIndex;
+  }
+
+  //-- Utility methods
+
+  /**
+   * Defines a property using a getter and setter in order to trigger a change handler without
+   * using `$watch` to observe changes.
+   * @param key
+   * @param handler
+   * @param value
+   */
+  function defineProperty (key, handler, value) {
+    Object.defineProperty(ctrl, key, {
+      get: function () { return value; },
+      set: function (newValue) {
+        var oldValue = value;
+        value = newValue;
+        handler(newValue, oldValue);
+      }
+    });
+  }
+
+  /**
+   * Updates whether or not pagination should be displayed.
+   */
+  function updatePagination () {
+    ctrl.shouldPaginate = shouldPaginate();
+    ctrl.shouldCenterTabs = shouldCenterTabs();
+    $timeout(function () {
+      adjustOffset($scope.selectedIndex);
+    });
+  }
+
+  /**
+   * Re-orders the tabs and updates the selected and focus indexes to their new positions.
+   * This is triggered by `tabDirective.js` when the user's tabs have been re-ordered.
+   */
+  function updateTabOrder () {
+    var selectedItem = ctrl.tabs[$scope.selectedIndex],
+        focusItem = ctrl.tabs[ctrl.focusIndex];
+    ctrl.tabs = ctrl.tabs.sort(function (a, b) {
+      return a.index - b.index;
+    });
+    $scope.selectedIndex = ctrl.tabs.indexOf(selectedItem);
+    ctrl.focusIndex = ctrl.tabs.indexOf(focusItem);
+  }
+
+  /**
+   * This moves the selected or focus index left or right.  This is used by the keydown handler.
+   * @param inc
+   */
+  function incrementSelectedIndex (inc) {
+    var newIndex,
+        index = ctrl.focusIndex;
+    for (newIndex = index + inc;
+         ctrl.tabs[newIndex] && ctrl.tabs[newIndex].scope.disabled;
+         newIndex += inc) {}
+    if (ctrl.tabs[newIndex]) {
+      ctrl.focusIndex = newIndex;
+    }
+  }
+
+  /**
+   * This is used to forward focus to dummy elements.  This method is necessary to avoid aniation
+   * issues when attempting to focus an item that is out of view.
+   */
+  function redirectFocus () {
+    elements.dummies[ctrl.focusIndex].focus();
+  }
+
+  /**
+   * Forces the pagination to move the focused tab into view.
+   */
+  function adjustOffset (index) {
+    if (ctrl.shouldCenterTabs) return;
+    if (index == null) index = ctrl.focusIndex;
+    var tab = elements.tabs[index],
+        left = tab.offsetLeft,
+        right = tab.offsetWidth + left;
+    ctrl.offsetLeft = Math.max(ctrl.offsetLeft, fixOffset(right - elements.canvas.clientWidth));
+    ctrl.offsetLeft = Math.min(ctrl.offsetLeft, fixOffset(left));
+  }
+
+  /**
+   * Iterates through all queued functions and clears the queue.  This is used for functions that
+   * are called before the UI is ready, such as size calculations.
+   */
+  function processQueue () {
+    queue.forEach(function (func) { $timeout(func); });
+    queue = [];
+  }
+
+  /**
+   * Determines if the tab content area is needed.
+   */
   function updateHasContent () {
     var hasContent = false;
     angular.forEach(ctrl.tabs, function (tab) {
@@ -41363,53 +43859,18 @@ function MdTabsController ($scope, $element, $window, $timeout, $mdConstant, $md
     ctrl.hasContent = hasContent;
   }
 
-  function removeTab (tabData) {
-    ctrl.tabs.splice(tabData.getIndex(), 1);
-    refreshIndex();
-    $timeout(function () {
-      updateInkBarStyles();
-      ctrl.offsetLeft = fixOffset(ctrl.offsetLeft);
-    });
-  }
-
+  /**
+   * Moves the indexes to their nearest valid values.
+   */
   function refreshIndex () {
     $scope.selectedIndex = getNearestSafeIndex($scope.selectedIndex);
     ctrl.focusIndex = getNearestSafeIndex(ctrl.focusIndex);
   }
 
-  function handleSelectedIndexChange (newValue, oldValue) {
-    if (newValue === oldValue) return;
-
-    $scope.selectedIndex = getNearestSafeIndex(newValue);
-    ctrl.lastSelectedIndex = oldValue;
-    updateInkBarStyles();
-    updateHeightFromContent();
-    $scope.$broadcast('$mdTabsChanged');
-    ctrl.tabs[oldValue] && ctrl.tabs[oldValue].scope.deselect();
-    ctrl.tabs[newValue] && ctrl.tabs[newValue].scope.select();
-  }
-
-  function handleResizeWhenVisible () {
-    //-- if there is already a watcher waiting for resize, do nothing
-    if (handleResizeWhenVisible.watcher) return;
-    //-- otherwise, we will abuse the $watch function to check for visible
-    handleResizeWhenVisible.watcher = $scope.$watch(function () {
-      //-- since we are checking for DOM size, we use $timeout to wait for after the DOM updates
-      $timeout(function () {
-        //-- if the watcher has already run (ie. multiple digests in one cycle), do nothing
-        if (!handleResizeWhenVisible.watcher) return;
-
-        if ($element.prop('offsetParent')) {
-          handleResizeWhenVisible.watcher();
-          handleResizeWhenVisible.watcher = null;
-
-          //-- we have to trigger our own $apply so that the DOM bindings will update
-          $scope.$apply(handleWindowResize);
-        }
-      }, 0, false);
-    });
-  }
-
+  /**
+   * Calculates the content height of the current tab.
+   * @returns {*}
+   */
   function updateHeightFromContent () {
     if (!$scope.dynamicHeight) return $element.css('height', '');
     if (!ctrl.tabs.length) return queue.push(updateHeightFromContent);
@@ -41432,8 +43893,13 @@ function MdTabsController ($scope, $element, $window, $timeout, $mdConstant, $md
         });
   }
 
+  /**
+   * Repositions the ink bar to the selected tab.
+   * @returns {*}
+   */
   function updateInkBarStyles () {
-    if (!ctrl.tabs.length) return queue.push(updateInkBarStyles);
+    if (!elements.tabs[$scope.selectedIndex]) return;
+    if (!ctrl.tabs.length) return queue.push(ctrl.updateInkBarStyles);
     //-- if the element is not visible, we will not be able to calculate sizes until it is
     //-- we should treat that as a resize event rather than just updating the ink bar
     if (!$element.prop('offsetParent')) return handleResizeWhenVisible();
@@ -41446,63 +43912,28 @@ function MdTabsController ($scope, $element, $window, $timeout, $mdConstant, $md
     angular.element(elements.inkBar).css({ left: left + 'px', right: right + 'px' });
   }
 
+  /**
+   * Adds left/right classes so that the ink bar will animate properly.
+   */
   function updateInkBarClassName () {
     var newIndex = $scope.selectedIndex,
         oldIndex = ctrl.lastSelectedIndex,
         ink = angular.element(elements.inkBar);
-    ink.removeClass('md-left md-right');
     if (!angular.isNumber(oldIndex)) return;
     if (newIndex < oldIndex) {
-      ink.addClass('md-left');
+      ink.addClass('md-left').removeClass('md-right');
     } else if (newIndex > oldIndex) {
-      ink.addClass('md-right');
+      ink.addClass('md-right').removeClass('md-left');
     }
   }
 
-  function getNearestSafeIndex(newIndex) {
-    var maxOffset = Math.max(ctrl.tabs.length - newIndex, newIndex),
-        i, tab;
-    for (i = 0; i <= maxOffset; i++) {
-      tab = ctrl.tabs[newIndex + i];
-      if (tab && (tab.scope.disabled !== true)) return tab.getIndex();
-      tab = ctrl.tabs[newIndex - i];
-      if (tab && (tab.scope.disabled !== true)) return tab.getIndex();
-    }
-    return newIndex;
-  }
-
-  function shouldStretchTabs () {
-    switch ($scope.stretchTabs) {
-      case 'always': return true;
-      case 'never':  return false;
-      default:       return !shouldPaginate() && $window.matchMedia('(max-width: 600px)').matches;
-    }
-  }
-
-  function shouldCenterTabs () {
-    return $scope.centerTabs && !shouldPaginate();
-  }
-
-  function shouldPaginate () {
-    if ($scope.noPagination) return false;
-    var canvasWidth = $element.prop('clientWidth');
-    angular.forEach(elements.tabs, function (tab) { canvasWidth -= tab.offsetWidth; });
-    return canvasWidth < 0;
-  }
-
-  function select (index) {
-    if (!locked) ctrl.focusIndex = $scope.selectedIndex = index;
-    ctrl.lastClick = true;
-  }
-
-  function scroll (event) {
-    if (!shouldPaginate()) return;
-    event.preventDefault();
-    ctrl.offsetLeft = fixOffset(ctrl.offsetLeft - event.wheelDelta);
-  }
-
+  /**
+   * Takes an offset value and makes sure that it is within the min/max allowed values.
+   * @param value
+   * @returns {*}
+   */
   function fixOffset (value) {
-    if (!elements.tabs.length || !shouldPaginate()) return 0;
+    if (!elements.tabs.length || !ctrl.shouldPaginate) return 0;
     var lastTab = elements.tabs[elements.tabs.length - 1],
         totalWidth = lastTab.offsetLeft + lastTab.offsetWidth;
     value = Math.max(0, value);
@@ -41510,41 +43941,21 @@ function MdTabsController ($scope, $element, $window, $timeout, $mdConstant, $md
     return value;
   }
 
-  function nextPage () {
-    var viewportWidth = elements.canvas.clientWidth,
-        totalWidth = viewportWidth + ctrl.offsetLeft,
-        i, tab;
-    for (i = 0; i < elements.tabs.length; i++) {
-      tab = elements.tabs[i];
-      if (tab.offsetLeft + tab.offsetWidth > totalWidth) break;
-    }
-    ctrl.offsetLeft = fixOffset(tab.offsetLeft);
-  }
-
-  function previousPage () {
-    var i, tab;
-    for (i = 0; i < elements.tabs.length; i++) {
-      tab = elements.tabs[i];
-      if (tab.offsetLeft + tab.offsetWidth >= ctrl.offsetLeft) break;
-    }
-    ctrl.offsetLeft = fixOffset(tab.offsetLeft + tab.offsetWidth - elements.canvas.clientWidth);
-  }
-
-  function canPageBack () {
-    return ctrl.offsetLeft > 0;
-  }
-
-  function canPageForward () {
-    var lastTab = elements.tabs[elements.tabs.length - 1];
-    return lastTab && lastTab.offsetLeft + lastTab.offsetWidth > elements.canvas.clientWidth + ctrl.offsetLeft;
-  }
-
+  /**
+   * Attaches a ripple to the tab item element.
+   * @param scope
+   * @param element
+   */
   function attachRipple (scope, element) {
     var options = { colorElement: angular.element(elements.inkBar) };
-    $mdInkRipple.attachTabBehavior(scope, element, options);
+    $mdTabInkRipple.attach(scope, element, options);
   }
 }
-MdTabsController.$inject = ["$scope", "$element", "$window", "$timeout", "$mdConstant", "$mdInkRipple", "$mdUtil", "$animate"];
+MdTabsController.$inject = ["$scope", "$element", "$window", "$timeout", "$mdConstant", "$mdTabInkRipple", "$mdUtil", "$animate", "$attrs", "$compile", "$mdTheming"];
+
+})();
+(function(){
+"use strict";
 
 /**
  * @ngdoc directive
@@ -41607,6 +44018,9 @@ MdTabsController.$inject = ["$scope", "$element", "$window", "$timeout", "$mdCon
  * @param {boolean=} md-dynamic-height When enabled, the tab wrapper will resize based on the contents of the selected tab
  * @param {boolean=} md-center-tabs When enabled, tabs will be centered provided there is no need for pagination
  * @param {boolean=} md-no-pagination When enabled, pagination will remain off
+ * @param {boolean=} md-swipe-content When enabled, swipe gestures will be enabled for the content area to jump between tabs
+ * @param {boolean=} md-no-disconnect If your tab content has background tasks (ie. event listeners), you will want to include this to prevent the scope from being disconnected
+ * @param {boolean=} md-autoselect When present, any tabs added after the initial load will be automatically selected
  *
  * @usage
  * <hljs lang="html">
@@ -41640,10 +44054,13 @@ function MdTabs ($mdTheming, $mdUtil, $compile) {
       dynamicHeight: '=?mdDynamicHeight',
       centerTabs:    '=?mdCenterTabs',
       selectedIndex: '=?mdSelected',
-      stretchTabs:   '@?mdStretchTabs'
+      stretchTabs:   '@?mdStretchTabs',
+      swipeContent:  '=?mdSwipeContent',
+      noDisconnect:  '=?mdNoDisconnect',
+      autoselect:    '=?mdAutoselect'
     },
     template: function (element, attr) {
-      attr.$mdTabsTemplate = element.html();
+      attr["$mdTabsTemplate"] = element.html();
       return '\
         <md-tabs-wrapper ng-class="{ \'md-stretch-tabs\': $mdTabsCtrl.shouldStretchTabs() }">\
           <md-tab-data></md-tab-data>\
@@ -41653,7 +44070,7 @@ function MdTabs ($mdTheming, $mdUtil, $compile) {
               aria-label="Previous Page"\
               aria-disabled="{{!$mdTabsCtrl.canPageBack()}}"\
               ng-class="{ \'md-disabled\': !$mdTabsCtrl.canPageBack() }"\
-              ng-if="$mdTabsCtrl.shouldPaginate()"\
+              ng-if="$mdTabsCtrl.shouldPaginate"\
               ng-click="$mdTabsCtrl.previousPage()">\
             <md-icon md-svg-icon="md-tabs-arrow"></md-icon>\
           </md-prev-button>\
@@ -41663,7 +44080,7 @@ function MdTabs ($mdTheming, $mdUtil, $compile) {
               aria-label="Next Page"\
               aria-disabled="{{!$mdTabsCtrl.canPageForward()}}"\
               ng-class="{ \'md-disabled\': !$mdTabsCtrl.canPageForward() }"\
-              ng-if="$mdTabsCtrl.shouldPaginate()"\
+              ng-if="$mdTabsCtrl.shouldPaginate"\
               ng-click="$mdTabsCtrl.nextPage()">\
             <md-icon md-svg-icon="md-tabs-arrow"></md-icon>\
           </md-next-button>\
@@ -41672,13 +44089,13 @@ function MdTabs ($mdTheming, $mdUtil, $compile) {
               aria-activedescendant="tab-item-{{$mdTabsCtrl.tabs[$mdTabsCtrl.focusIndex].id}}"\
               ng-focus="$mdTabsCtrl.redirectFocus()"\
               ng-class="{\
-                  \'md-paginated\': $mdTabsCtrl.shouldPaginate(),\
-                  \'md-center-tabs\': $mdTabsCtrl.shouldCenterTabs()\
+                  \'md-paginated\': $mdTabsCtrl.shouldPaginate,\
+                  \'md-center-tabs\': $mdTabsCtrl.shouldCenterTabs\
               }"\
               ng-keydown="$mdTabsCtrl.keydown($event)"\
               role="tablist">\
             <md-pagination-wrapper\
-                ng-class="{ \'md-center-tabs\': $mdTabsCtrl.shouldCenterTabs() }"\
+                ng-class="{ \'md-center-tabs\': $mdTabsCtrl.shouldCenterTabs }"\
                 md-tab-scroll="$mdTabsCtrl.scroll($event)">\
               <md-tab-item\
                   tabindex="-1"\
@@ -41704,6 +44121,7 @@ function MdTabs ($mdTheming, $mdUtil, $compile) {
             </md-pagination-wrapper>\
             <div class="md-visually-hidden md-dummy-wrapper">\
               <md-dummy-tab\
+                  class="md-tab"\
                   tabindex="-1"\
                   id="tab-item-{{tab.id}}"\
                   role="tab"\
@@ -41723,72 +44141,80 @@ function MdTabs ($mdTheming, $mdUtil, $compile) {
               id="tab-content-{{tab.id}}"\
               role="tabpanel"\
               aria-labelledby="tab-item-{{tab.id}}"\
-              md-swipe-left="$mdTabsCtrl.incrementSelectedIndex(1)"\
-              md-swipe-right="$mdTabsCtrl.incrementSelectedIndex(-1)"\
+              md-swipe-left="swipeContent && $mdTabsCtrl.incrementSelectedIndex(1)"\
+              md-swipe-right="swipeContent && $mdTabsCtrl.incrementSelectedIndex(-1)"\
               ng-if="$mdTabsCtrl.hasContent"\
-              ng-repeat="(index, tab) in $mdTabsCtrl.tabs" \
-              md-template="tab.template"\
-              md-scope="tab.parent"\
+              ng-repeat="(index, tab) in $mdTabsCtrl.tabs"\
+              md-connected-if="tab.isActive()"\
               ng-class="{\
                 \'md-no-transition\': $mdTabsCtrl.lastSelectedIndex == null,\
                 \'md-active\':        tab.isActive(),\
                 \'md-left\':          tab.isLeft(),\
                 \'md-right\':         tab.isRight(),\
                 \'md-no-scroll\':     dynamicHeight\
-              }"></md-tab-content>\
+              }">\
+            <div\
+                md-template="tab.template"\
+                md-scope="tab.parent"\
+                ng-if="tab.shouldRender()"></div>\
+          </md-tab-content>\
         </md-tabs-content-wrapper>\
       ';
     },
     controller: 'MdTabsController',
-    controllerAs: '$mdTabsCtrl',
-    link: function (scope, element, attr) {
-      compileTabData(attr.$mdTabsTemplate);
-      delete attr.$mdTabsTemplate;
-
-      $mdUtil.initOptionalProperties(scope, attr);
-
-      //-- watch attributes
-      attr.$observe('mdNoBar', function (value) { scope.noInkBar = angular.isDefined(value); });
-      //-- set default value for selectedIndex
-      scope.selectedIndex = angular.isNumber(scope.selectedIndex) ? scope.selectedIndex : 0;
-      //-- apply themes
-      $mdTheming(element);
-
-      function compileTabData (template) {
-        var dataElement = element.find('md-tab-data');
-        dataElement.html(template);
-        $compile(dataElement.contents())(scope.$parent);
-      }
-    }
+    controllerAs: '$mdTabsCtrl'
   };
 }
 MdTabs.$inject = ["$mdTheming", "$mdUtil", "$compile"];
+
+})();
+(function(){
+"use strict";
 
 angular
     .module('material.components.tabs')
     .directive('mdTemplate', MdTemplate);
 
-function MdTemplate ($compile) {
+function MdTemplate ($compile, $mdUtil, $timeout) {
   return {
     restrict: 'A',
     link: link,
     scope: {
       template: '=mdTemplate',
-      compileScope: '=mdScope'
+      compileScope: '=mdScope',
+      connected: '=?mdConnectedIf'
     },
     require: '^?mdTabs'
   };
   function link (scope, element, attr, ctrl) {
     if (!ctrl) return;
+    var compileScope = scope.compileScope.$new();
     element.html(scope.template);
-    $compile(element.contents())(scope.compileScope);
+    $compile(element.contents())(compileScope);
+    return $timeout(handleScope);
+    function handleScope () {
+      scope.$watch('connected', function (value) { value === false ? disconnect() : reconnect(); });
+      scope.$on('$destroy', reconnect);
+    }
+    function disconnect () {
+      if (ctrl.scope.noDisconnect) return;
+      $mdUtil.disconnectScope(compileScope);
+    }
+    function reconnect () {
+      if (ctrl.scope.noDisconnect) return;
+      $mdUtil.reconnectScope(compileScope);
+    }
   }
 }
-MdTemplate.$inject = ["$compile"];
+MdTemplate.$inject = ["$compile", "$mdUtil", "$timeout"];
 
+})();
 (function(){ 
- angular.module("material.core").constant("$MD_THEME_CSS", "/* mixin definition ; sets LTR and RTL within the same style call */md-autocomplete.md-THEME_NAME-theme {  background: '{{background-50}}'; }  md-autocomplete.md-THEME_NAME-theme button md-icon path {    fill: '{{background-600}}'; }  md-autocomplete.md-THEME_NAME-theme button:after {    background: '{{background-600-0.3}}'; }.md-autocomplete-suggestions.md-THEME_NAME-theme {  background: '{{background-50}}'; }  .md-autocomplete-suggestions.md-THEME_NAME-theme li {    color: '{{background-900}}'; }    .md-autocomplete-suggestions.md-THEME_NAME-theme li .highlight {      color: '{{background-600}}'; }    .md-autocomplete-suggestions.md-THEME_NAME-theme li:hover, .md-autocomplete-suggestions.md-THEME_NAME-theme li.selected {      background: '{{background-200}}'; }md-backdrop.md-opaque.md-THEME_NAME-theme {  background-color: '{{foreground-4-0.5}}'; }md-bottom-sheet.md-THEME_NAME-theme {  background-color: '{{background-50}}';  border-top-color: '{{background-300}}'; }  md-bottom-sheet.md-THEME_NAME-theme.md-list md-list-item {    color: '{{foreground-1}}'; }  md-bottom-sheet.md-THEME_NAME-theme .md-subheader {    background-color: '{{background-50}}'; }  md-bottom-sheet.md-THEME_NAME-theme .md-subheader {    color: '{{foreground-1}}'; }a.md-button.md-THEME_NAME-theme, .md-button.md-THEME_NAME-theme {  border-radius: 3px; }  a.md-button.md-THEME_NAME-theme:not([disabled]):hover, .md-button.md-THEME_NAME-theme:not([disabled]):hover {    background-color: '{{background-500-0.2}}'; }  a.md-button.md-THEME_NAME-theme:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme:not([disabled]).md-focused {    background-color: '{{background-500-0.2}}'; }  a.md-button.md-THEME_NAME-theme:not([disabled]).md-icon-button:hover, .md-button.md-THEME_NAME-theme:not([disabled]).md-icon-button:hover {    background-color: transparent; }  a.md-button.md-THEME_NAME-theme.md-fab, .md-button.md-THEME_NAME-theme.md-fab {    border-radius: 50%;    background-color: '{{accent-color}}';    color: '{{accent-contrast}}'; }    a.md-button.md-THEME_NAME-theme.md-fab md-icon, .md-button.md-THEME_NAME-theme.md-fab md-icon {      color: '{{accent-contrast}}'; }    a.md-button.md-THEME_NAME-theme.md-fab:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-fab:not([disabled]):hover {      background-color: '{{accent-color}}'; }    a.md-button.md-THEME_NAME-theme.md-fab:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-fab:not([disabled]).md-focused {      background-color: '{{accent-A700}}'; }  a.md-button.md-THEME_NAME-theme.md-primary, .md-button.md-THEME_NAME-theme.md-primary {    color: '{{primary-color}}'; }    a.md-button.md-THEME_NAME-theme.md-primary.md-raised, a.md-button.md-THEME_NAME-theme.md-primary.md-fab, .md-button.md-THEME_NAME-theme.md-primary.md-raised, .md-button.md-THEME_NAME-theme.md-primary.md-fab {      color: '{{primary-contrast}}';      background-color: '{{primary-color}}'; }      a.md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]) md-icon, a.md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]) md-icon {        color: '{{primary-contrast}}'; }      a.md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]):hover, a.md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]):hover {        background-color: '{{primary-color}}'; }      a.md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]).md-focused, a.md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]).md-focused {        background-color: '{{primary-600}}'; }    a.md-button.md-THEME_NAME-theme.md-primary:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-primary:not([disabled]) md-icon {      color: '{{primary-color}}'; }  a.md-button.md-THEME_NAME-theme.md-fab, .md-button.md-THEME_NAME-theme.md-fab {    border-radius: 50%;    background-color: '{{accent-color}}';    color: '{{accent-contrast}}'; }    a.md-button.md-THEME_NAME-theme.md-fab:not([disabled]) .md-icon, .md-button.md-THEME_NAME-theme.md-fab:not([disabled]) .md-icon {      color: '{{accent-contrast}}'; }    a.md-button.md-THEME_NAME-theme.md-fab:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-fab:not([disabled]):hover {      background-color: '{{accent-color}}'; }    a.md-button.md-THEME_NAME-theme.md-fab:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-fab:not([disabled]).md-focused {      background-color: '{{accent-A700}}'; }  a.md-button.md-THEME_NAME-theme.md-raised, .md-button.md-THEME_NAME-theme.md-raised {    color: '{{background-contrast}}';    background-color: '{{background-50}}'; }    a.md-button.md-THEME_NAME-theme.md-raised:not([disabled]) .md-icon, .md-button.md-THEME_NAME-theme.md-raised:not([disabled]) .md-icon {      color: '{{background-contrast}}'; }    a.md-button.md-THEME_NAME-theme.md-raised:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-raised:not([disabled]):hover {      background-color: '{{background-50}}'; }    a.md-button.md-THEME_NAME-theme.md-raised:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-raised:not([disabled]).md-focused {      background-color: '{{background-200}}'; }  a.md-button.md-THEME_NAME-theme.md-warn, .md-button.md-THEME_NAME-theme.md-warn {    color: '{{warn-color}}'; }    a.md-button.md-THEME_NAME-theme.md-warn.md-raised, a.md-button.md-THEME_NAME-theme.md-warn.md-fab, .md-button.md-THEME_NAME-theme.md-warn.md-raised, .md-button.md-THEME_NAME-theme.md-warn.md-fab {      color: '{{warn-contrast}}';      background-color: '{{warn-color}}'; }      a.md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]) md-icon, a.md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]) md-icon {        color: '{{warn-contrast}}'; }      a.md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]):hover, a.md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]):hover {        background-color: '{{warn-color}}'; }      a.md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]).md-focused, a.md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]).md-focused {        background-color: '{{warn-700}}'; }    a.md-button.md-THEME_NAME-theme.md-warn:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-warn:not([disabled]) md-icon {      color: '{{warn-color}}'; }  a.md-button.md-THEME_NAME-theme.md-accent, .md-button.md-THEME_NAME-theme.md-accent {    color: '{{accent-color}}'; }    a.md-button.md-THEME_NAME-theme.md-accent.md-raised, a.md-button.md-THEME_NAME-theme.md-accent.md-fab, .md-button.md-THEME_NAME-theme.md-accent.md-raised, .md-button.md-THEME_NAME-theme.md-accent.md-fab {      color: '{{accent-contrast}}';      background-color: '{{accent-color}}'; }      a.md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]) md-icon, a.md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]) md-icon {        color: '{{accent-contrast}}'; }      a.md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]):hover, a.md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]):hover {        background-color: '{{accent-color}}'; }      a.md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]).md-focused, a.md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]).md-focused {        background-color: '{{accent-700}}'; }    a.md-button.md-THEME_NAME-theme.md-accent:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-accent:not([disabled]) md-icon {      color: '{{accent-color}}'; }  a.md-button.md-THEME_NAME-theme[disabled], a.md-button.md-THEME_NAME-theme.md-raised[disabled], a.md-button.md-THEME_NAME-theme.md-fab[disabled], a.md-button.md-THEME_NAME-theme.md-accent[disabled], a.md-button.md-THEME_NAME-theme.md-warn[disabled], .md-button.md-THEME_NAME-theme[disabled], .md-button.md-THEME_NAME-theme.md-raised[disabled], .md-button.md-THEME_NAME-theme.md-fab[disabled], .md-button.md-THEME_NAME-theme.md-accent[disabled], .md-button.md-THEME_NAME-theme.md-warn[disabled] {    color: '{{foreground-3}}';    cursor: not-allowed; }    a.md-button.md-THEME_NAME-theme[disabled] md-icon, a.md-button.md-THEME_NAME-theme.md-raised[disabled] md-icon, a.md-button.md-THEME_NAME-theme.md-fab[disabled] md-icon, a.md-button.md-THEME_NAME-theme.md-accent[disabled] md-icon, a.md-button.md-THEME_NAME-theme.md-warn[disabled] md-icon, .md-button.md-THEME_NAME-theme[disabled] md-icon, .md-button.md-THEME_NAME-theme.md-raised[disabled] md-icon, .md-button.md-THEME_NAME-theme.md-fab[disabled] md-icon, .md-button.md-THEME_NAME-theme.md-accent[disabled] md-icon, .md-button.md-THEME_NAME-theme.md-warn[disabled] md-icon {      color: '{{foreground-3}}'; }  a.md-button.md-THEME_NAME-theme.md-raised[disabled], a.md-button.md-THEME_NAME-theme.md-fab[disabled], .md-button.md-THEME_NAME-theme.md-raised[disabled], .md-button.md-THEME_NAME-theme.md-fab[disabled] {    background-color: '{{foreground-4}}'; }  a.md-button.md-THEME_NAME-theme[disabled], .md-button.md-THEME_NAME-theme[disabled] {    background-color: transparent; }md-card.md-THEME_NAME-theme {  background-color: '{{background-color}}';  border-radius: 2px; }  md-card.md-THEME_NAME-theme .md-card-image {    border-radius: 2px 2px 0 0; }md-checkbox.md-THEME_NAME-theme .md-ripple {  color: '{{accent-600}}'; }md-checkbox.md-THEME_NAME-theme.md-checked .md-ripple {  color: '{{background-600}}'; }md-checkbox.md-THEME_NAME-theme.md-checked.md-focused .md-container:before {  background-color: '{{accent-color-0.26}}'; }md-checkbox.md-THEME_NAME-theme .md-icon {  border-color: '{{foreground-2}}'; }md-checkbox.md-THEME_NAME-theme.md-checked .md-icon {  background-color: '{{accent-color-0.87}}'; }md-checkbox.md-THEME_NAME-theme.md-checked .md-icon:after {  border-color: '{{background-200}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary .md-ripple {  color: '{{primary-600}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-ripple {  color: '{{background-600}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary .md-icon {  border-color: '{{foreground-2}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-icon {  background-color: '{{primary-color-0.87}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked.md-focused .md-container:before {  background-color: '{{primary-color-0.26}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-icon:after {  border-color: '{{background-200}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn .md-ripple {  color: '{{warn-600}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn .md-icon {  border-color: '{{foreground-2}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-icon {  background-color: '{{warn-color-0.87}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked.md-focused:not([disabled]) .md-container:before {  background-color: '{{warn-color-0.26}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-icon:after {  border-color: '{{background-200}}'; }md-checkbox.md-THEME_NAME-theme[disabled] .md-icon {  border-color: '{{foreground-3}}'; }md-checkbox.md-THEME_NAME-theme[disabled].md-checked .md-icon {  background-color: '{{foreground-3}}'; }md-checkbox.md-THEME_NAME-theme[disabled] .md-label {  color: '{{foreground-3}}'; }md-chips.md-THEME_NAME-theme .md-chips {  box-shadow: 0 1px '{{background-300}}'; }  md-chips.md-THEME_NAME-theme .md-chips.md-focused {    box-shadow: 0 2px '{{primary-color}}'; }md-chips.md-THEME_NAME-theme .md-chip {  background: '{{background-300}}';  color: '{{background-800}}'; }  md-chips.md-THEME_NAME-theme .md-chip.md-focused {    background: '{{primary-color}}';    color: '{{primary-contrast}}'; }    md-chips.md-THEME_NAME-theme .md-chip.md-focused md-icon {      color: '{{primary-contrast}}'; }md-chips.md-THEME_NAME-theme md-chip-remove .md-button md-icon path {  fill: '{{background-500}}'; }.md-contact-suggestion span.md-contact-email {  color: '{{background-400}}'; }md-content.md-THEME_NAME-theme {  background-color: '{{background-color}}'; }md-dialog.md-THEME_NAME-theme {  border-radius: 4px;  background-color: '{{background-color}}'; }  md-dialog.md-THEME_NAME-theme.md-content-overflow .md-actions {    border-top-color: '{{foreground-4}}'; }md-divider.md-THEME_NAME-theme {  border-top-color: '{{foreground-4}}'; }md-icon.md-THEME_NAME-theme {  color: '{{foreground-2}}'; }  md-icon.md-THEME_NAME-theme.md-primary {    color: '{{primary-color}}'; }  md-icon.md-THEME_NAME-theme.md-accent {    color: '{{accent-color}}'; }  md-icon.md-THEME_NAME-theme.md-warn {    color: '{{warn-color}}'; }md-input-container.md-THEME_NAME-theme .md-input {  color: '{{foreground-1}}';  border-color: '{{foreground-4}}';  text-shadow: '{{foreground-shadow}}'; }  md-input-container.md-THEME_NAME-theme .md-input::-webkit-input-placeholder, md-input-container.md-THEME_NAME-theme .md-input::-moz-placeholder, md-input-container.md-THEME_NAME-theme .md-input:-moz-placeholder, md-input-container.md-THEME_NAME-theme .md-input:-ms-input-placeholder {    color: '{{foreground-3}}'; }md-input-container.md-THEME_NAME-theme > md-icon {  color: '{{foreground-1}}'; }md-input-container.md-THEME_NAME-theme label, md-input-container.md-THEME_NAME-theme .md-placeholder {  text-shadow: '{{foreground-shadow}}';  color: '{{foreground-3}}'; }md-input-container.md-THEME_NAME-theme ng-messages, md-input-container.md-THEME_NAME-theme [ng-message], md-input-container.md-THEME_NAME-theme [data-ng-message], md-input-container.md-THEME_NAME-theme [x-ng-message] {  color: '{{warn-500}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-has-value label {  color: '{{foreground-2}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused .md-input {  border-color: '{{primary-500}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused label {  color: '{{primary-500}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused md-icon {  color: '{{primary-500}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-accent .md-input {  border-color: '{{accent-500}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-accent label {  color: '{{accent-500}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-warn .md-input {  border-color: '{{warn-500}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-warn label {  color: '{{warn-500}}'; }md-input-container.md-THEME_NAME-theme.md-input-invalid .md-input {  border-color: '{{warn-500}}'; }md-input-container.md-THEME_NAME-theme.md-input-invalid.md-input-focused label {  color: '{{warn-500}}'; }md-input-container.md-THEME_NAME-theme.md-input-invalid ng-message, md-input-container.md-THEME_NAME-theme.md-input-invalid data-ng-message, md-input-container.md-THEME_NAME-theme.md-input-invalid x-ng-message, md-input-container.md-THEME_NAME-theme.md-input-invalid [ng-message], md-input-container.md-THEME_NAME-theme.md-input-invalid [data-ng-message], md-input-container.md-THEME_NAME-theme.md-input-invalid [x-ng-message], md-input-container.md-THEME_NAME-theme.md-input-invalid .md-char-counter {  color: '{{warn-500}}'; }md-input-container.md-THEME_NAME-theme .md-input[disabled], [disabled] md-input-container.md-THEME_NAME-theme .md-input {  border-bottom-color: transparent;  color: '{{foreground-3}}';  background-image: linear-gradient(to right, '{{foreground-4}}' 0%, '{{foreground-4}}' 33%, transparent 0%);  background-image: -ms-linear-gradient(left, transparent 0%, '{{foreground-4}}' 100%); }md-list.md-THEME_NAME-theme md-list-item.md-2-line .md-list-item-text h3, md-list.md-THEME_NAME-theme md-list-item.md-2-line .md-list-item-text h4, md-list.md-THEME_NAME-theme md-list-item.md-3-line .md-list-item-text h3, md-list.md-THEME_NAME-theme md-list-item.md-3-line .md-list-item-text h4 {  color: '{{foreground-1}}'; }md-list.md-THEME_NAME-theme md-list-item.md-2-line .md-list-item-text p, md-list.md-THEME_NAME-theme md-list-item.md-3-line .md-list-item-text p {  color: '{{foreground-2}}'; }md-list.md-THEME_NAME-theme .md-proxy-focus.md-focused div.md-no-style {  background-color: '{{background-100}}'; }md-list.md-THEME_NAME-theme md-list-item > md-icon {  color: '{{foreground-2}}'; }  md-list.md-THEME_NAME-theme md-list-item > md-icon.md-highlight {    color: '{{primary-color}}'; }    md-list.md-THEME_NAME-theme md-list-item > md-icon.md-highlight.md-accent {      color: '{{accent-color}}'; }md-list.md-THEME_NAME-theme md-list-item button {  background-color: '{{background-color}}'; }  md-list.md-THEME_NAME-theme md-list-item button.md-button:not([disabled]):hover {    background-color: '{{background-color}}'; }md-progress-circular.md-THEME_NAME-theme {  background-color: transparent; }  md-progress-circular.md-THEME_NAME-theme .md-inner .md-gap {    border-top-color: '{{primary-color}}';    border-bottom-color: '{{primary-color}}'; }  md-progress-circular.md-THEME_NAME-theme .md-inner .md-left .md-half-circle, md-progress-circular.md-THEME_NAME-theme .md-inner .md-right .md-half-circle {    border-top-color: '{{primary-color}}'; }  md-progress-circular.md-THEME_NAME-theme .md-inner .md-right .md-half-circle {    border-right-color: '{{primary-color}}'; }  md-progress-circular.md-THEME_NAME-theme .md-inner .md-left .md-half-circle {    border-left-color: '{{primary-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-warn .md-inner .md-gap {    border-top-color: '{{warn-color}}';    border-bottom-color: '{{warn-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-warn .md-inner .md-left .md-half-circle, md-progress-circular.md-THEME_NAME-theme.md-warn .md-inner .md-right .md-half-circle {    border-top-color: '{{warn-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-warn .md-inner .md-right .md-half-circle {    border-right-color: '{{warn-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-warn .md-inner .md-left .md-half-circle {    border-left-color: '{{warn-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-accent .md-inner .md-gap {    border-top-color: '{{accent-color}}';    border-bottom-color: '{{accent-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-accent .md-inner .md-left .md-half-circle, md-progress-circular.md-THEME_NAME-theme.md-accent .md-inner .md-right .md-half-circle {    border-top-color: '{{accent-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-accent .md-inner .md-right .md-half-circle {    border-right-color: '{{accent-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-accent .md-inner .md-left .md-half-circle {    border-left-color: '{{accent-color}}'; }md-progress-linear.md-THEME_NAME-theme .md-container {  background-color: '{{primary-100}}'; }md-progress-linear.md-THEME_NAME-theme .md-bar {  background-color: '{{primary-color}}'; }md-progress-linear.md-THEME_NAME-theme.md-warn .md-container {  background-color: '{{warn-100}}'; }md-progress-linear.md-THEME_NAME-theme.md-warn .md-bar {  background-color: '{{warn-color}}'; }md-progress-linear.md-THEME_NAME-theme.md-accent .md-container {  background-color: '{{accent-100}}'; }md-progress-linear.md-THEME_NAME-theme.md-accent .md-bar {  background-color: '{{accent-color}}'; }md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-warn .md-bar1 {  background-color: '{{warn-100}}'; }md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-warn .md-dashed:before {  background: radial-gradient('{{warn-100}}' 0%, '{{warn-100}}' 16%, transparent 42%); }md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-accent .md-bar1 {  background-color: '{{accent-100}}'; }md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-accent .md-dashed:before {  background: radial-gradient('{{accent-100}}' 0%, '{{accent-100}}' 16%, transparent 42%); }md-radio-button.md-THEME_NAME-theme .md-off {  border-color: '{{foreground-2}}'; }md-radio-button.md-THEME_NAME-theme .md-on {  background-color: '{{accent-color-0.87}}'; }md-radio-button.md-THEME_NAME-theme.md-checked .md-off {  border-color: '{{accent-color-0.87}}'; }md-radio-button.md-THEME_NAME-theme.md-checked .md-ink-ripple {  color: '{{accent-color-0.87}}'; }md-radio-button.md-THEME_NAME-theme .md-container .md-ripple {  color: '{{accent-600}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-on, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-on, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-on, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-on {  background-color: '{{primary-color-0.87}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-off, md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-off, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-off, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-off {  border-color: '{{primary-color-0.87}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-ink-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-ink-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-ink-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-ink-ripple {  color: '{{primary-color-0.87}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-container .md-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-container .md-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-container .md-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-container .md-ripple {  color: '{{primary-600}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-on, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-on, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-on, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-on {  background-color: '{{warn-color-0.87}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-off, md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-off, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-off, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-off {  border-color: '{{warn-color-0.87}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-ink-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-ink-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-ink-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-ink-ripple {  color: '{{warn-color-0.87}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-container .md-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-container .md-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-container .md-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-container .md-ripple {  color: '{{warn-600}}'; }md-radio-group.md-THEME_NAME-theme[disabled], md-radio-button.md-THEME_NAME-theme[disabled] {  color: '{{foreground-3}}'; }  md-radio-group.md-THEME_NAME-theme[disabled] .md-container .md-off, md-radio-button.md-THEME_NAME-theme[disabled] .md-container .md-off {    border-color: '{{foreground-3}}'; }  md-radio-group.md-THEME_NAME-theme[disabled] .md-container .md-on, md-radio-button.md-THEME_NAME-theme[disabled] .md-container .md-on {    border-color: '{{foreground-3}}'; }md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty) .md-checked .md-container:before {  background-color: '{{accent-color-0.26}}'; }md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty) .md-checked:not([disabled]).md-primary .md-container:before {  background-color: '{{primary-color-0.26}}'; }md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty) .md-checked.md-primary .md-container:before {  background-color: '{{warn-color-0.26}}'; }md-select.md-THEME_NAME-theme.ng-invalid.ng-dirty .md-select-label {  color: '{{warn-500}}' !important;  border-bottom-color: '{{warn-500}}' !important; }md-select.md-THEME_NAME-theme:not([disabled]):focus .md-select-label {  border-bottom-color: '{{primary-color}}';  color: '{{ foreground-1 }}'; }  md-select.md-THEME_NAME-theme:not([disabled]):focus .md-select-label.md-placeholder {    color: '{{ foreground-1 }}'; }md-select.md-THEME_NAME-theme:not([disabled]):focus.md-accent .md-select-label {  border-bottom-color: '{{accent-color}}'; }md-select.md-THEME_NAME-theme:not([disabled]):focus.md-warn .md-select-label {  border-bottom-color: '{{warn-color}}'; }md-select.md-THEME_NAME-theme[disabled] .md-select-label {  color: '{{foreground-3}}'; }  md-select.md-THEME_NAME-theme[disabled] .md-select-label.md-placeholder {    color: '{{foreground-3}}'; }md-select.md-THEME_NAME-theme .md-select-label {  border-bottom-color: '{{foreground-4}}'; }  md-select.md-THEME_NAME-theme .md-select-label.md-placeholder {    color: '{{foreground-2}}'; }md-select-menu.md-THEME_NAME-theme md-optgroup {  color: '{{foreground-2}}'; }  md-select-menu.md-THEME_NAME-theme md-optgroup md-option {    color: '{{foreground-1}}'; }md-select-menu.md-THEME_NAME-theme md-option[selected] {  color: '{{primary-500}}'; }  md-select-menu.md-THEME_NAME-theme md-option[selected]:focus {    color: '{{primary-600}}'; }  md-select-menu.md-THEME_NAME-theme md-option[selected].md-accent {    color: '{{accent-500}}'; }    md-select-menu.md-THEME_NAME-theme md-option[selected].md-accent:focus {      color: '{{accent-600}}'; }md-select-menu.md-THEME_NAME-theme md-option:focus:not([selected]) {  background: '{{background-200}}'; }md-sidenav.md-THEME_NAME-theme {  background-color: '{{background-color}}'; }md-slider.md-THEME_NAME-theme .md-track {  background-color: '{{foreground-3}}'; }md-slider.md-THEME_NAME-theme .md-track-ticks {  background-color: '{{foreground-4}}'; }md-slider.md-THEME_NAME-theme .md-focus-thumb {  background-color: '{{foreground-2}}'; }md-slider.md-THEME_NAME-theme .md-focus-ring {  border-color: '{{foreground-4}}'; }md-slider.md-THEME_NAME-theme .md-disabled-thumb {  border-color: '{{background-color}}'; }md-slider.md-THEME_NAME-theme.md-min .md-thumb:after {  background-color: '{{background-color}}'; }md-slider.md-THEME_NAME-theme .md-track.md-track-fill {  background-color: '{{accent-color}}'; }md-slider.md-THEME_NAME-theme .md-thumb:after {  border-color: '{{accent-color}}';  background-color: '{{accent-color}}'; }md-slider.md-THEME_NAME-theme .md-sign {  background-color: '{{accent-color}}'; }  md-slider.md-THEME_NAME-theme .md-sign:after {    border-top-color: '{{accent-color}}'; }md-slider.md-THEME_NAME-theme .md-thumb-text {  color: '{{accent-contrast}}'; }md-slider.md-THEME_NAME-theme.md-warn .md-track.md-track-fill {  background-color: '{{warn-color}}'; }md-slider.md-THEME_NAME-theme.md-warn .md-thumb:after {  border-color: '{{warn-color}}';  background-color: '{{warn-color}}'; }md-slider.md-THEME_NAME-theme.md-warn .md-sign {  background-color: '{{warn-color}}'; }  md-slider.md-THEME_NAME-theme.md-warn .md-sign:after {    border-top-color: '{{warn-color}}'; }md-slider.md-THEME_NAME-theme.md-warn .md-thumb-text {  color: '{{warn-contrast}}'; }md-slider.md-THEME_NAME-theme.md-primary .md-track.md-track-fill {  background-color: '{{primary-color}}'; }md-slider.md-THEME_NAME-theme.md-primary .md-thumb:after {  border-color: '{{primary-color}}';  background-color: '{{primary-color}}'; }md-slider.md-THEME_NAME-theme.md-primary .md-sign {  background-color: '{{primary-color}}'; }  md-slider.md-THEME_NAME-theme.md-primary .md-sign:after {    border-top-color: '{{primary-color}}'; }md-slider.md-THEME_NAME-theme.md-primary .md-thumb-text {  color: '{{primary-contrast}}'; }md-slider.md-THEME_NAME-theme[disabled] .md-thumb:after {  border-color: '{{foreground-3}}'; }md-slider.md-THEME_NAME-theme[disabled]:not(.md-min) .md-thumb:after {  background-color: '{{foreground-3}}'; }.md-subheader.md-THEME_NAME-theme {  color: '{{ foreground-2-0.23 }}';  background-color: '{{background-color}}'; }  .md-subheader.md-THEME_NAME-theme.md-primary {    color: '{{primary-color}}'; }  .md-subheader.md-THEME_NAME-theme.md-accent {    color: '{{accent-color}}'; }  .md-subheader.md-THEME_NAME-theme.md-warn {    color: '{{warn-color}}'; }md-switch.md-THEME_NAME-theme .md-thumb {  background-color: '{{background-50}}'; }md-switch.md-THEME_NAME-theme .md-bar {  background-color: '{{background-500}}'; }md-switch.md-THEME_NAME-theme.md-checked .md-thumb {  background-color: '{{accent-color}}'; }md-switch.md-THEME_NAME-theme.md-checked .md-bar {  background-color: '{{accent-color-0.5}}'; }md-switch.md-THEME_NAME-theme.md-checked.md-focused .md-thumb:before {  background-color: '{{accent-color-0.26}}'; }md-switch.md-THEME_NAME-theme.md-checked.md-primary .md-thumb {  background-color: '{{primary-color}}'; }md-switch.md-THEME_NAME-theme.md-checked.md-primary .md-bar {  background-color: '{{primary-color-0.5}}'; }md-switch.md-THEME_NAME-theme.md-checked.md-primary.md-focused .md-thumb:before {  background-color: '{{primary-color-0.26}}'; }md-switch.md-THEME_NAME-theme.md-checked.md-warn .md-thumb {  background-color: '{{warn-color}}'; }md-switch.md-THEME_NAME-theme.md-checked.md-warn .md-bar {  background-color: '{{warn-color-0.5}}'; }md-switch.md-THEME_NAME-theme.md-checked.md-warn.md-focused .md-thumb:before {  background-color: '{{warn-color-0.26}}'; }md-switch.md-THEME_NAME-theme[disabled] .md-thumb {  background-color: '{{background-400}}'; }md-switch.md-THEME_NAME-theme[disabled] .md-bar {  background-color: '{{foreground-4}}'; }md-tabs.md-THEME_NAME-theme md-tabs-wrapper {  background-color: transparent;  border-color: '{{foreground-4}}'; }md-tabs.md-THEME_NAME-theme .md-paginator md-icon {  color: '{{primary-color}}'; }md-tabs.md-THEME_NAME-theme md-ink-bar {  color: '{{accent-color}}';  background: '{{accent-color}}'; }md-tabs.md-THEME_NAME-theme .md-tab {  color: '{{foreground-2}}'; }  md-tabs.md-THEME_NAME-theme .md-tab[disabled] {    color: '{{foreground-3}}'; }  md-tabs.md-THEME_NAME-theme .md-tab.md-active, md-tabs.md-THEME_NAME-theme .md-tab.md-focused {    color: '{{primary-color}}'; }  md-tabs.md-THEME_NAME-theme .md-tab.md-focused {    background: '{{primary-color-0.1}}'; }  md-tabs.md-THEME_NAME-theme .md-tab .md-ripple-container {    color: '{{accent-100}}'; }md-tabs.md-THEME_NAME-theme.md-accent md-tabs-wrapper {  background-color: '{{accent-color}}'; }md-tabs.md-THEME_NAME-theme.md-accent md-tab-item:not([disabled]) {  color: '{{accent-100}}'; }  md-tabs.md-THEME_NAME-theme.md-accent md-tab-item:not([disabled]).md-active, md-tabs.md-THEME_NAME-theme.md-accent md-tab-item:not([disabled]).md-focused {    color: '{{accent-contrast}}'; }  md-tabs.md-THEME_NAME-theme.md-accent md-tab-item:not([disabled]).md-focused {    background: '{{accent-contrast-0.1}}'; }md-tabs.md-THEME_NAME-theme.md-accent md-ink-bar {  color: '{{primary-600-1}}';  background: '{{primary-600-1}}'; }md-tabs.md-THEME_NAME-theme.md-primary md-tabs-wrapper {  background-color: '{{primary-color}}'; }md-tabs.md-THEME_NAME-theme.md-primary md-tab-item:not([disabled]) {  color: '{{primary-100}}'; }  md-tabs.md-THEME_NAME-theme.md-primary md-tab-item:not([disabled]).md-active, md-tabs.md-THEME_NAME-theme.md-primary md-tab-item:not([disabled]).md-focused {    color: '{{primary-contrast}}'; }  md-tabs.md-THEME_NAME-theme.md-primary md-tab-item:not([disabled]).md-focused {    background: '{{primary-contrast-0.1}}'; }md-tabs.md-THEME_NAME-theme.md-warn md-tabs-wrapper {  background-color: '{{warn-color}}'; }md-tabs.md-THEME_NAME-theme.md-warn md-tab-item:not([disabled]) {  color: '{{warn-100}}'; }  md-tabs.md-THEME_NAME-theme.md-warn md-tab-item:not([disabled]).md-active, md-tabs.md-THEME_NAME-theme.md-warn md-tab-item:not([disabled]).md-focused {    color: '{{warn-contrast}}'; }  md-tabs.md-THEME_NAME-theme.md-warn md-tab-item:not([disabled]).md-focused {    background: '{{warn-contrast-0.1}}'; }md-toolbar > md-tabs.md-THEME_NAME-theme md-tabs-wrapper {  background-color: '{{primary-color}}'; }md-toolbar > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]) {  color: '{{primary-100}}'; }  md-toolbar > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-active, md-toolbar > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-focused {    color: '{{primary-contrast}}'; }  md-toolbar > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-focused {    background: '{{primary-contrast-0.1}}'; }md-toolbar.md-accent > md-tabs.md-THEME_NAME-theme md-tabs-wrapper {  background-color: '{{accent-color}}'; }md-toolbar.md-accent > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]) {  color: '{{accent-100}}'; }  md-toolbar.md-accent > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-active, md-toolbar.md-accent > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-focused {    color: '{{accent-contrast}}'; }  md-toolbar.md-accent > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-focused {    background: '{{accent-contrast-0.1}}'; }md-toolbar.md-accent > md-tabs.md-THEME_NAME-theme md-ink-bar {  color: '{{primary-600-1}}';  background: '{{primary-600-1}}'; }md-toolbar.md-warn > md-tabs.md-THEME_NAME-theme md-tabs-wrapper {  background-color: '{{warn-color}}'; }md-toolbar.md-warn > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]) {  color: '{{warn-100}}'; }  md-toolbar.md-warn > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-active, md-toolbar.md-warn > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-focused {    color: '{{warn-contrast}}'; }  md-toolbar.md-warn > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-focused {    background: '{{warn-contrast-0.1}}'; }md-toast.md-THEME_NAME-theme {  background-color: #323232;  color: '{{background-50}}'; }  md-toast.md-THEME_NAME-theme .md-button {    color: '{{background-50}}'; }    md-toast.md-THEME_NAME-theme .md-button.md-highlight {      color: '{{primary-A200}}'; }      md-toast.md-THEME_NAME-theme .md-button.md-highlight.md-accent {        color: '{{accent-A200}}'; }      md-toast.md-THEME_NAME-theme .md-button.md-highlight.md-warn {        color: '{{warn-A200}}'; }md-toolbar.md-THEME_NAME-theme {  background-color: '{{primary-color}}';  color: '{{primary-contrast}}'; }  md-toolbar.md-THEME_NAME-theme md-icon {    color: '{{primary-contrast}}'; }  md-toolbar.md-THEME_NAME-theme .md-button {    color: '{{primary-contrast}}'; }  md-toolbar.md-THEME_NAME-theme.md-accent {    background-color: '{{accent-color}}';    color: '{{accent-contrast}}'; }  md-toolbar.md-THEME_NAME-theme.md-warn {    background-color: '{{warn-color}}';    color: '{{warn-contrast}}'; }md-tooltip.md-THEME_NAME-theme {  color: '{{background-A100}}'; }  md-tooltip.md-THEME_NAME-theme .md-background {    background-color: '{{foreground-2}}'; }"); 
-})();;/*!
+angular.module("material.core").constant("$MD_THEME_CSS", "/* mixin definition ; sets LTR and RTL within the same style call */md-autocomplete.md-THEME_NAME-theme {  background: '{{background-50}}'; }  md-autocomplete.md-THEME_NAME-theme[disabled] {    background: '{{background-100}}'; }  md-autocomplete.md-THEME_NAME-theme button md-icon path {    fill: '{{background-600}}'; }  md-autocomplete.md-THEME_NAME-theme button:after {    background: '{{background-600-0.3}}'; }.md-autocomplete-suggestions.md-THEME_NAME-theme {  background: '{{background-50}}'; }  .md-autocomplete-suggestions.md-THEME_NAME-theme li {    color: '{{background-900}}'; }    .md-autocomplete-suggestions.md-THEME_NAME-theme li .highlight {      color: '{{background-600}}'; }    .md-autocomplete-suggestions.md-THEME_NAME-theme li:hover, .md-autocomplete-suggestions.md-THEME_NAME-theme li.selected {      background: '{{background-200}}'; }md-backdrop.md-opaque.md-THEME_NAME-theme {  background-color: '{{foreground-4-0.5}}'; }md-bottom-sheet.md-THEME_NAME-theme {  background-color: '{{background-50}}';  border-top-color: '{{background-300}}'; }  md-bottom-sheet.md-THEME_NAME-theme.md-list md-list-item {    color: '{{foreground-1}}'; }  md-bottom-sheet.md-THEME_NAME-theme .md-subheader {    background-color: '{{background-50}}'; }  md-bottom-sheet.md-THEME_NAME-theme .md-subheader {    color: '{{foreground-1}}'; }a.md-button.md-THEME_NAME-theme, .md-button.md-THEME_NAME-theme {  border-radius: 3px; }  a.md-button.md-THEME_NAME-theme:not([disabled]):hover, .md-button.md-THEME_NAME-theme:not([disabled]):hover {    background-color: '{{background-500-0.2}}'; }  a.md-button.md-THEME_NAME-theme:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme:not([disabled]).md-focused {    background-color: '{{background-500-0.2}}'; }  a.md-button.md-THEME_NAME-theme:not([disabled]).md-icon-button:hover, .md-button.md-THEME_NAME-theme:not([disabled]).md-icon-button:hover {    background-color: transparent; }  a.md-button.md-THEME_NAME-theme.md-fab, .md-button.md-THEME_NAME-theme.md-fab {    border-radius: 50%;    background-color: '{{accent-color}}';    color: '{{accent-contrast}}'; }    a.md-button.md-THEME_NAME-theme.md-fab md-icon, .md-button.md-THEME_NAME-theme.md-fab md-icon {      color: '{{accent-contrast}}'; }    a.md-button.md-THEME_NAME-theme.md-fab:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-fab:not([disabled]):hover {      background-color: '{{accent-color}}'; }    a.md-button.md-THEME_NAME-theme.md-fab:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-fab:not([disabled]).md-focused {      background-color: '{{accent-A700}}'; }  a.md-button.md-THEME_NAME-theme.md-icon-button, .md-button.md-THEME_NAME-theme.md-icon-button {    border-radius: 50%; }  a.md-button.md-THEME_NAME-theme.md-primary, .md-button.md-THEME_NAME-theme.md-primary {    color: '{{primary-color}}'; }    a.md-button.md-THEME_NAME-theme.md-primary.md-raised, a.md-button.md-THEME_NAME-theme.md-primary.md-fab, .md-button.md-THEME_NAME-theme.md-primary.md-raised, .md-button.md-THEME_NAME-theme.md-primary.md-fab {      color: '{{primary-contrast}}';      background-color: '{{primary-color}}'; }      a.md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]) md-icon, a.md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]) md-icon {        color: '{{primary-contrast}}'; }      a.md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]):hover, a.md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]):hover {        background-color: '{{primary-color}}'; }      a.md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]).md-focused, a.md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-primary.md-raised:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-primary.md-fab:not([disabled]).md-focused {        background-color: '{{primary-600}}'; }    a.md-button.md-THEME_NAME-theme.md-primary:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-primary:not([disabled]) md-icon {      color: '{{primary-color}}'; }  a.md-button.md-THEME_NAME-theme.md-fab, .md-button.md-THEME_NAME-theme.md-fab {    border-radius: 50%;    background-color: '{{accent-color}}';    color: '{{accent-contrast}}'; }    a.md-button.md-THEME_NAME-theme.md-fab:not([disabled]) .md-icon, .md-button.md-THEME_NAME-theme.md-fab:not([disabled]) .md-icon {      color: '{{accent-contrast}}'; }    a.md-button.md-THEME_NAME-theme.md-fab:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-fab:not([disabled]):hover {      background-color: '{{accent-color}}'; }    a.md-button.md-THEME_NAME-theme.md-fab:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-fab:not([disabled]).md-focused {      background-color: '{{accent-A700}}'; }  a.md-button.md-THEME_NAME-theme.md-raised, .md-button.md-THEME_NAME-theme.md-raised {    color: '{{background-contrast}}';    background-color: '{{background-50}}'; }    a.md-button.md-THEME_NAME-theme.md-raised:not([disabled]) .md-icon, .md-button.md-THEME_NAME-theme.md-raised:not([disabled]) .md-icon {      color: '{{background-contrast}}'; }    a.md-button.md-THEME_NAME-theme.md-raised:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-raised:not([disabled]):hover {      background-color: '{{background-50}}'; }    a.md-button.md-THEME_NAME-theme.md-raised:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-raised:not([disabled]).md-focused {      background-color: '{{background-200}}'; }  a.md-button.md-THEME_NAME-theme.md-warn, .md-button.md-THEME_NAME-theme.md-warn {    color: '{{warn-color}}'; }    a.md-button.md-THEME_NAME-theme.md-warn.md-raised, a.md-button.md-THEME_NAME-theme.md-warn.md-fab, .md-button.md-THEME_NAME-theme.md-warn.md-raised, .md-button.md-THEME_NAME-theme.md-warn.md-fab {      color: '{{warn-contrast}}';      background-color: '{{warn-color}}'; }      a.md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]) md-icon, a.md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]) md-icon {        color: '{{warn-contrast}}'; }      a.md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]):hover, a.md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]):hover {        background-color: '{{warn-color}}'; }      a.md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]).md-focused, a.md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-warn.md-raised:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-warn.md-fab:not([disabled]).md-focused {        background-color: '{{warn-700}}'; }    a.md-button.md-THEME_NAME-theme.md-warn:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-warn:not([disabled]) md-icon {      color: '{{warn-color}}'; }  a.md-button.md-THEME_NAME-theme.md-accent, .md-button.md-THEME_NAME-theme.md-accent {    color: '{{accent-color}}'; }    a.md-button.md-THEME_NAME-theme.md-accent.md-raised, a.md-button.md-THEME_NAME-theme.md-accent.md-fab, .md-button.md-THEME_NAME-theme.md-accent.md-raised, .md-button.md-THEME_NAME-theme.md-accent.md-fab {      color: '{{accent-contrast}}';      background-color: '{{accent-color}}'; }      a.md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]) md-icon, a.md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]) md-icon {        color: '{{accent-contrast}}'; }      a.md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]):hover, a.md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]):hover, .md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]):hover {        background-color: '{{accent-color}}'; }      a.md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]).md-focused, a.md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-accent.md-raised:not([disabled]).md-focused, .md-button.md-THEME_NAME-theme.md-accent.md-fab:not([disabled]).md-focused {        background-color: '{{accent-700}}'; }    a.md-button.md-THEME_NAME-theme.md-accent:not([disabled]) md-icon, .md-button.md-THEME_NAME-theme.md-accent:not([disabled]) md-icon {      color: '{{accent-color}}'; }  a.md-button.md-THEME_NAME-theme[disabled], a.md-button.md-THEME_NAME-theme.md-raised[disabled], a.md-button.md-THEME_NAME-theme.md-fab[disabled], a.md-button.md-THEME_NAME-theme.md-accent[disabled], a.md-button.md-THEME_NAME-theme.md-warn[disabled], .md-button.md-THEME_NAME-theme[disabled], .md-button.md-THEME_NAME-theme.md-raised[disabled], .md-button.md-THEME_NAME-theme.md-fab[disabled], .md-button.md-THEME_NAME-theme.md-accent[disabled], .md-button.md-THEME_NAME-theme.md-warn[disabled] {    color: '{{foreground-3}}';    cursor: not-allowed; }    a.md-button.md-THEME_NAME-theme[disabled] md-icon, a.md-button.md-THEME_NAME-theme.md-raised[disabled] md-icon, a.md-button.md-THEME_NAME-theme.md-fab[disabled] md-icon, a.md-button.md-THEME_NAME-theme.md-accent[disabled] md-icon, a.md-button.md-THEME_NAME-theme.md-warn[disabled] md-icon, .md-button.md-THEME_NAME-theme[disabled] md-icon, .md-button.md-THEME_NAME-theme.md-raised[disabled] md-icon, .md-button.md-THEME_NAME-theme.md-fab[disabled] md-icon, .md-button.md-THEME_NAME-theme.md-accent[disabled] md-icon, .md-button.md-THEME_NAME-theme.md-warn[disabled] md-icon {      color: '{{foreground-3}}'; }  a.md-button.md-THEME_NAME-theme.md-raised[disabled], a.md-button.md-THEME_NAME-theme.md-fab[disabled], .md-button.md-THEME_NAME-theme.md-raised[disabled], .md-button.md-THEME_NAME-theme.md-fab[disabled] {    background-color: '{{foreground-4}}'; }  a.md-button.md-THEME_NAME-theme[disabled], .md-button.md-THEME_NAME-theme[disabled] {    background-color: transparent; }md-card.md-THEME_NAME-theme {  background-color: '{{background-color}}';  border-radius: 2px; }  md-card.md-THEME_NAME-theme .md-card-image {    border-radius: 2px 2px 0 0; }md-checkbox.md-THEME_NAME-theme .md-ripple {  color: '{{accent-600}}'; }md-checkbox.md-THEME_NAME-theme.md-checked .md-ripple {  color: '{{background-600}}'; }md-checkbox.md-THEME_NAME-theme.md-checked.md-focused .md-container:before {  background-color: '{{accent-color-0.26}}'; }md-checkbox.md-THEME_NAME-theme .md-icon {  border-color: '{{foreground-2}}'; }md-checkbox.md-THEME_NAME-theme.md-checked .md-icon {  background-color: '{{accent-color-0.87}}'; }md-checkbox.md-THEME_NAME-theme.md-checked .md-icon:after {  border-color: '{{background-200}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary .md-ripple {  color: '{{primary-600}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-ripple {  color: '{{background-600}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary .md-icon {  border-color: '{{foreground-2}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-icon {  background-color: '{{primary-color-0.87}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked.md-focused .md-container:before {  background-color: '{{primary-color-0.26}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-icon:after {  border-color: '{{background-200}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn .md-ripple {  color: '{{warn-600}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn .md-icon {  border-color: '{{foreground-2}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-icon {  background-color: '{{warn-color-0.87}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked.md-focused:not([disabled]) .md-container:before {  background-color: '{{warn-color-0.26}}'; }md-checkbox.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-icon:after {  border-color: '{{background-200}}'; }md-checkbox.md-THEME_NAME-theme[disabled] .md-icon {  border-color: '{{foreground-3}}'; }md-checkbox.md-THEME_NAME-theme[disabled].md-checked .md-icon {  background-color: '{{foreground-3}}'; }md-checkbox.md-THEME_NAME-theme[disabled] .md-label {  color: '{{foreground-3}}'; }md-chips.md-THEME_NAME-theme .md-chips {  box-shadow: 0 1px '{{background-300}}'; }  md-chips.md-THEME_NAME-theme .md-chips.md-focused {    box-shadow: 0 2px '{{primary-color}}'; }md-chips.md-THEME_NAME-theme .md-chip {  background: '{{background-300}}';  color: '{{background-800}}'; }  md-chips.md-THEME_NAME-theme .md-chip.md-focused {    background: '{{primary-color}}';    color: '{{primary-contrast}}'; }    md-chips.md-THEME_NAME-theme .md-chip.md-focused md-icon {      color: '{{primary-contrast}}'; }md-chips.md-THEME_NAME-theme md-chip-remove .md-button md-icon path {  fill: '{{background-500}}'; }.md-contact-suggestion span.md-contact-email {  color: '{{background-400}}'; }md-content.md-THEME_NAME-theme {  background-color: '{{background-color}}'; }md-dialog.md-THEME_NAME-theme {  border-radius: 4px;  background-color: '{{background-color}}'; }  md-dialog.md-THEME_NAME-theme.md-content-overflow .md-actions {    border-top-color: '{{foreground-4}}'; }md-divider.md-THEME_NAME-theme {  border-top-color: '{{foreground-4}}'; }md-icon.md-THEME_NAME-theme {  color: '{{foreground-2}}'; }  md-icon.md-THEME_NAME-theme.md-primary {    color: '{{primary-color}}'; }  md-icon.md-THEME_NAME-theme.md-accent {    color: '{{accent-color}}'; }  md-icon.md-THEME_NAME-theme.md-warn {    color: '{{warn-color}}'; }md-input-container.md-THEME_NAME-theme .md-input {  color: '{{foreground-1}}';  border-color: '{{foreground-4}}';  text-shadow: '{{foreground-shadow}}'; }  md-input-container.md-THEME_NAME-theme .md-input::-webkit-input-placeholder, md-input-container.md-THEME_NAME-theme .md-input::-moz-placeholder, md-input-container.md-THEME_NAME-theme .md-input:-moz-placeholder, md-input-container.md-THEME_NAME-theme .md-input:-ms-input-placeholder {    color: '{{foreground-3}}'; }md-input-container.md-THEME_NAME-theme > md-icon {  color: '{{foreground-1}}'; }md-input-container.md-THEME_NAME-theme label, md-input-container.md-THEME_NAME-theme .md-placeholder {  text-shadow: '{{foreground-shadow}}';  color: '{{foreground-3}}'; }md-input-container.md-THEME_NAME-theme ng-messages, md-input-container.md-THEME_NAME-theme [ng-message], md-input-container.md-THEME_NAME-theme [data-ng-message], md-input-container.md-THEME_NAME-theme [x-ng-message] {  color: '{{warn-500}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-has-value label {  color: '{{foreground-2}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused .md-input {  border-color: '{{primary-500}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused label {  color: '{{primary-500}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused md-icon {  color: '{{primary-500}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-accent .md-input {  border-color: '{{accent-500}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-accent label {  color: '{{accent-500}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-warn .md-input {  border-color: '{{warn-500}}'; }md-input-container.md-THEME_NAME-theme:not(.md-input-invalid).md-input-focused.md-warn label {  color: '{{warn-500}}'; }md-input-container.md-THEME_NAME-theme.md-input-invalid .md-input {  border-color: '{{warn-500}}'; }md-input-container.md-THEME_NAME-theme.md-input-invalid.md-input-focused label {  color: '{{warn-500}}'; }md-input-container.md-THEME_NAME-theme.md-input-invalid ng-message, md-input-container.md-THEME_NAME-theme.md-input-invalid data-ng-message, md-input-container.md-THEME_NAME-theme.md-input-invalid x-ng-message, md-input-container.md-THEME_NAME-theme.md-input-invalid [ng-message], md-input-container.md-THEME_NAME-theme.md-input-invalid [data-ng-message], md-input-container.md-THEME_NAME-theme.md-input-invalid [x-ng-message], md-input-container.md-THEME_NAME-theme.md-input-invalid .md-char-counter {  color: '{{warn-500}}'; }md-input-container.md-THEME_NAME-theme .md-input[disabled], [disabled] md-input-container.md-THEME_NAME-theme .md-input {  border-bottom-color: transparent;  color: '{{foreground-3}}';  background-image: linear-gradient(to right, '{{foreground-3}}' 0%, '{{foreground-3}}' 33%, transparent 0%);  background-image: -ms-linear-gradient(left, transparent 0%, '{{foreground-3}}' 100%); }md-list.md-THEME_NAME-theme md-list-item.md-2-line .md-list-item-text h3, md-list.md-THEME_NAME-theme md-list-item.md-2-line .md-list-item-text h4, md-list.md-THEME_NAME-theme md-list-item.md-3-line .md-list-item-text h3, md-list.md-THEME_NAME-theme md-list-item.md-3-line .md-list-item-text h4 {  color: '{{foreground-1}}'; }md-list.md-THEME_NAME-theme md-list-item.md-2-line .md-list-item-text p, md-list.md-THEME_NAME-theme md-list-item.md-3-line .md-list-item-text p {  color: '{{foreground-2}}'; }md-list.md-THEME_NAME-theme .md-proxy-focus.md-focused div.md-no-style {  background-color: '{{background-100}}'; }md-list.md-THEME_NAME-theme md-list-item > md-icon {  color: '{{foreground-2}}'; }  md-list.md-THEME_NAME-theme md-list-item > md-icon.md-highlight {    color: '{{primary-color}}'; }    md-list.md-THEME_NAME-theme md-list-item > md-icon.md-highlight.md-accent {      color: '{{accent-color}}'; }md-list.md-THEME_NAME-theme md-list-item button {  background-color: '{{background-color}}'; }  md-list.md-THEME_NAME-theme md-list-item button.md-button:not([disabled]):hover {    background-color: '{{background-color}}'; }md-menu-content.md-THEME_NAME-theme {  background-color: '{{background-color}}'; }  md-menu-content.md-THEME_NAME-theme md-menu-divider {    background-color: '{{foreground-4}}'; }md-progress-circular.md-THEME_NAME-theme {  background-color: transparent; }  md-progress-circular.md-THEME_NAME-theme .md-inner .md-gap {    border-top-color: '{{primary-color}}';    border-bottom-color: '{{primary-color}}'; }  md-progress-circular.md-THEME_NAME-theme .md-inner .md-left .md-half-circle, md-progress-circular.md-THEME_NAME-theme .md-inner .md-right .md-half-circle {    border-top-color: '{{primary-color}}'; }  md-progress-circular.md-THEME_NAME-theme .md-inner .md-right .md-half-circle {    border-right-color: '{{primary-color}}'; }  md-progress-circular.md-THEME_NAME-theme .md-inner .md-left .md-half-circle {    border-left-color: '{{primary-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-warn .md-inner .md-gap {    border-top-color: '{{warn-color}}';    border-bottom-color: '{{warn-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-warn .md-inner .md-left .md-half-circle, md-progress-circular.md-THEME_NAME-theme.md-warn .md-inner .md-right .md-half-circle {    border-top-color: '{{warn-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-warn .md-inner .md-right .md-half-circle {    border-right-color: '{{warn-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-warn .md-inner .md-left .md-half-circle {    border-left-color: '{{warn-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-accent .md-inner .md-gap {    border-top-color: '{{accent-color}}';    border-bottom-color: '{{accent-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-accent .md-inner .md-left .md-half-circle, md-progress-circular.md-THEME_NAME-theme.md-accent .md-inner .md-right .md-half-circle {    border-top-color: '{{accent-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-accent .md-inner .md-right .md-half-circle {    border-right-color: '{{accent-color}}'; }  md-progress-circular.md-THEME_NAME-theme.md-accent .md-inner .md-left .md-half-circle {    border-left-color: '{{accent-color}}'; }md-progress-linear.md-THEME_NAME-theme .md-container {  background-color: '{{primary-100}}'; }md-progress-linear.md-THEME_NAME-theme .md-bar {  background-color: '{{primary-color}}'; }md-progress-linear.md-THEME_NAME-theme.md-warn .md-container {  background-color: '{{warn-100}}'; }md-progress-linear.md-THEME_NAME-theme.md-warn .md-bar {  background-color: '{{warn-color}}'; }md-progress-linear.md-THEME_NAME-theme.md-accent .md-container {  background-color: '{{accent-100}}'; }md-progress-linear.md-THEME_NAME-theme.md-accent .md-bar {  background-color: '{{accent-color}}'; }md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-warn .md-bar1 {  background-color: '{{warn-100}}'; }md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-warn .md-dashed:before {  background: radial-gradient('{{warn-100}}' 0%, '{{warn-100}}' 16%, transparent 42%); }md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-accent .md-bar1 {  background-color: '{{accent-100}}'; }md-progress-linear.md-THEME_NAME-theme[md-mode=buffer].md-accent .md-dashed:before {  background: radial-gradient('{{accent-100}}' 0%, '{{accent-100}}' 16%, transparent 42%); }md-radio-button.md-THEME_NAME-theme .md-off {  border-color: '{{foreground-2}}'; }md-radio-button.md-THEME_NAME-theme .md-on {  background-color: '{{accent-color-0.87}}'; }md-radio-button.md-THEME_NAME-theme.md-checked .md-off {  border-color: '{{accent-color-0.87}}'; }md-radio-button.md-THEME_NAME-theme.md-checked .md-ink-ripple {  color: '{{accent-color-0.87}}'; }md-radio-button.md-THEME_NAME-theme .md-container .md-ripple {  color: '{{accent-600}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-on, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-on, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-on, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-on {  background-color: '{{primary-color-0.87}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-off, md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-off, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-off, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-off {  border-color: '{{primary-color-0.87}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-ink-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-ink-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-ink-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary.md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary.md-checked .md-ink-ripple {  color: '{{primary-color-0.87}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-primary .md-container .md-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-primary .md-container .md-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-primary .md-container .md-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-primary .md-container .md-ripple {  color: '{{primary-600}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-on, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-on, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-on, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-on {  background-color: '{{warn-color-0.87}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-off, md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-off, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-off, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-off, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-off {  border-color: '{{warn-color-0.87}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-ink-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-ink-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-ink-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn.md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-checked .md-ink-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn.md-checked .md-ink-ripple {  color: '{{warn-color-0.87}}'; }md-radio-group.md-THEME_NAME-theme:not([disabled]) .md-warn .md-container .md-ripple, md-radio-group.md-THEME_NAME-theme:not([disabled]).md-warn .md-container .md-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]) .md-warn .md-container .md-ripple, md-radio-button.md-THEME_NAME-theme:not([disabled]).md-warn .md-container .md-ripple {  color: '{{warn-600}}'; }md-radio-group.md-THEME_NAME-theme[disabled], md-radio-button.md-THEME_NAME-theme[disabled] {  color: '{{foreground-3}}'; }  md-radio-group.md-THEME_NAME-theme[disabled] .md-container .md-off, md-radio-button.md-THEME_NAME-theme[disabled] .md-container .md-off {    border-color: '{{foreground-3}}'; }  md-radio-group.md-THEME_NAME-theme[disabled] .md-container .md-on, md-radio-button.md-THEME_NAME-theme[disabled] .md-container .md-on {    border-color: '{{foreground-3}}'; }md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty) .md-checked .md-container:before {  background-color: '{{accent-color-0.26}}'; }md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty) .md-checked:not([disabled]).md-primary .md-container:before {  background-color: '{{primary-color-0.26}}'; }md-radio-group.md-THEME_NAME-theme.md-focused:not(:empty) .md-checked.md-primary .md-container:before {  background-color: '{{warn-color-0.26}}'; }md-select.md-THEME_NAME-theme.ng-invalid.ng-dirty .md-select-label {  color: '{{warn-500}}' !important;  border-bottom-color: '{{warn-500}}' !important; }md-select.md-THEME_NAME-theme:not([disabled]):focus .md-select-label {  border-bottom-color: '{{primary-color}}';  color: '{{ foreground-1 }}'; }  md-select.md-THEME_NAME-theme:not([disabled]):focus .md-select-label.md-placeholder {    color: '{{ foreground-1 }}'; }md-select.md-THEME_NAME-theme:not([disabled]):focus.md-accent .md-select-label {  border-bottom-color: '{{accent-color}}'; }md-select.md-THEME_NAME-theme:not([disabled]):focus.md-warn .md-select-label {  border-bottom-color: '{{warn-color}}'; }md-select.md-THEME_NAME-theme[disabled] .md-select-label {  color: '{{foreground-3}}'; }  md-select.md-THEME_NAME-theme[disabled] .md-select-label.md-placeholder {    color: '{{foreground-3}}'; }md-select.md-THEME_NAME-theme .md-select-label {  border-bottom-color: '{{foreground-4}}'; }  md-select.md-THEME_NAME-theme .md-select-label.md-placeholder {    color: '{{foreground-2}}'; }md-select-menu.md-THEME_NAME-theme md-optgroup {  color: '{{foreground-2}}'; }  md-select-menu.md-THEME_NAME-theme md-optgroup md-option {    color: '{{foreground-1}}'; }md-select-menu.md-THEME_NAME-theme md-option[selected] {  color: '{{primary-500}}'; }  md-select-menu.md-THEME_NAME-theme md-option[selected]:focus {    color: '{{primary-600}}'; }  md-select-menu.md-THEME_NAME-theme md-option[selected].md-accent {    color: '{{accent-500}}'; }    md-select-menu.md-THEME_NAME-theme md-option[selected].md-accent:focus {      color: '{{accent-600}}'; }md-select-menu.md-THEME_NAME-theme md-option:focus:not([selected]) {  background: '{{background-200}}'; }md-sidenav.md-THEME_NAME-theme {  background-color: '{{background-color}}'; }md-slider.md-THEME_NAME-theme .md-track {  background-color: '{{foreground-3}}'; }md-slider.md-THEME_NAME-theme .md-track-ticks {  background-color: '{{foreground-4}}'; }md-slider.md-THEME_NAME-theme .md-focus-thumb {  background-color: '{{foreground-2}}'; }md-slider.md-THEME_NAME-theme .md-focus-ring {  border-color: '{{foreground-4}}'; }md-slider.md-THEME_NAME-theme .md-disabled-thumb {  border-color: '{{background-color}}'; }md-slider.md-THEME_NAME-theme.md-min .md-thumb:after {  background-color: '{{background-color}}'; }md-slider.md-THEME_NAME-theme .md-track.md-track-fill {  background-color: '{{accent-color}}'; }md-slider.md-THEME_NAME-theme .md-thumb:after {  border-color: '{{accent-color}}';  background-color: '{{accent-color}}'; }md-slider.md-THEME_NAME-theme .md-sign {  background-color: '{{accent-color}}'; }  md-slider.md-THEME_NAME-theme .md-sign:after {    border-top-color: '{{accent-color}}'; }md-slider.md-THEME_NAME-theme .md-thumb-text {  color: '{{accent-contrast}}'; }md-slider.md-THEME_NAME-theme.md-warn .md-track.md-track-fill {  background-color: '{{warn-color}}'; }md-slider.md-THEME_NAME-theme.md-warn .md-thumb:after {  border-color: '{{warn-color}}';  background-color: '{{warn-color}}'; }md-slider.md-THEME_NAME-theme.md-warn .md-sign {  background-color: '{{warn-color}}'; }  md-slider.md-THEME_NAME-theme.md-warn .md-sign:after {    border-top-color: '{{warn-color}}'; }md-slider.md-THEME_NAME-theme.md-warn .md-thumb-text {  color: '{{warn-contrast}}'; }md-slider.md-THEME_NAME-theme.md-primary .md-track.md-track-fill {  background-color: '{{primary-color}}'; }md-slider.md-THEME_NAME-theme.md-primary .md-thumb:after {  border-color: '{{primary-color}}';  background-color: '{{primary-color}}'; }md-slider.md-THEME_NAME-theme.md-primary .md-sign {  background-color: '{{primary-color}}'; }  md-slider.md-THEME_NAME-theme.md-primary .md-sign:after {    border-top-color: '{{primary-color}}'; }md-slider.md-THEME_NAME-theme.md-primary .md-thumb-text {  color: '{{primary-contrast}}'; }md-slider.md-THEME_NAME-theme[disabled] .md-thumb:after {  border-color: '{{foreground-3}}'; }md-slider.md-THEME_NAME-theme[disabled]:not(.md-min) .md-thumb:after {  background-color: '{{foreground-3}}'; }.md-subheader.md-THEME_NAME-theme {  color: '{{ foreground-2-0.23 }}';  background-color: '{{background-color}}'; }  .md-subheader.md-THEME_NAME-theme.md-primary {    color: '{{primary-color}}'; }  .md-subheader.md-THEME_NAME-theme.md-accent {    color: '{{accent-color}}'; }  .md-subheader.md-THEME_NAME-theme.md-warn {    color: '{{warn-color}}'; }md-switch.md-THEME_NAME-theme .md-thumb {  background-color: '{{background-50}}'; }md-switch.md-THEME_NAME-theme .md-bar {  background-color: '{{background-500}}'; }md-switch.md-THEME_NAME-theme.md-checked .md-thumb {  background-color: '{{accent-color}}'; }md-switch.md-THEME_NAME-theme.md-checked .md-bar {  background-color: '{{accent-color-0.5}}'; }md-switch.md-THEME_NAME-theme.md-checked.md-focused .md-thumb:before {  background-color: '{{accent-color-0.26}}'; }md-switch.md-THEME_NAME-theme.md-checked.md-primary .md-thumb {  background-color: '{{primary-color}}'; }md-switch.md-THEME_NAME-theme.md-checked.md-primary .md-bar {  background-color: '{{primary-color-0.5}}'; }md-switch.md-THEME_NAME-theme.md-checked.md-primary.md-focused .md-thumb:before {  background-color: '{{primary-color-0.26}}'; }md-switch.md-THEME_NAME-theme.md-checked.md-warn .md-thumb {  background-color: '{{warn-color}}'; }md-switch.md-THEME_NAME-theme.md-checked.md-warn .md-bar {  background-color: '{{warn-color-0.5}}'; }md-switch.md-THEME_NAME-theme.md-checked.md-warn.md-focused .md-thumb:before {  background-color: '{{warn-color-0.26}}'; }md-switch.md-THEME_NAME-theme[disabled] .md-thumb {  background-color: '{{background-400}}'; }md-switch.md-THEME_NAME-theme[disabled] .md-bar {  background-color: '{{foreground-4}}'; }md-tabs.md-THEME_NAME-theme md-tabs-wrapper {  background-color: transparent;  border-color: '{{foreground-4}}'; }md-tabs.md-THEME_NAME-theme .md-paginator md-icon {  color: '{{primary-color}}'; }md-tabs.md-THEME_NAME-theme md-ink-bar {  color: '{{accent-color}}';  background: '{{accent-color}}'; }md-tabs.md-THEME_NAME-theme .md-tab {  color: '{{foreground-2}}'; }  md-tabs.md-THEME_NAME-theme .md-tab[disabled] {    color: '{{foreground-3}}'; }  md-tabs.md-THEME_NAME-theme .md-tab.md-active, md-tabs.md-THEME_NAME-theme .md-tab.md-focused {    color: '{{primary-color}}'; }  md-tabs.md-THEME_NAME-theme .md-tab.md-focused {    background: '{{primary-color-0.1}}'; }  md-tabs.md-THEME_NAME-theme .md-tab .md-ripple-container {    color: '{{accent-100}}'; }md-tabs.md-THEME_NAME-theme.md-accent md-tabs-wrapper {  background-color: '{{accent-color}}'; }md-tabs.md-THEME_NAME-theme.md-accent md-tab-item:not([disabled]) {  color: '{{accent-100}}'; }  md-tabs.md-THEME_NAME-theme.md-accent md-tab-item:not([disabled]).md-active, md-tabs.md-THEME_NAME-theme.md-accent md-tab-item:not([disabled]).md-focused {    color: '{{accent-contrast}}'; }  md-tabs.md-THEME_NAME-theme.md-accent md-tab-item:not([disabled]).md-focused {    background: '{{accent-contrast-0.1}}'; }md-tabs.md-THEME_NAME-theme.md-accent md-ink-bar {  color: '{{primary-600-1}}';  background: '{{primary-600-1}}'; }md-tabs.md-THEME_NAME-theme.md-primary md-tabs-wrapper {  background-color: '{{primary-color}}'; }md-tabs.md-THEME_NAME-theme.md-primary md-tab-item:not([disabled]) {  color: '{{primary-100}}'; }  md-tabs.md-THEME_NAME-theme.md-primary md-tab-item:not([disabled]).md-active, md-tabs.md-THEME_NAME-theme.md-primary md-tab-item:not([disabled]).md-focused {    color: '{{primary-contrast}}'; }  md-tabs.md-THEME_NAME-theme.md-primary md-tab-item:not([disabled]).md-focused {    background: '{{primary-contrast-0.1}}'; }md-tabs.md-THEME_NAME-theme.md-warn md-tabs-wrapper {  background-color: '{{warn-color}}'; }md-tabs.md-THEME_NAME-theme.md-warn md-tab-item:not([disabled]) {  color: '{{warn-100}}'; }  md-tabs.md-THEME_NAME-theme.md-warn md-tab-item:not([disabled]).md-active, md-tabs.md-THEME_NAME-theme.md-warn md-tab-item:not([disabled]).md-focused {    color: '{{warn-contrast}}'; }  md-tabs.md-THEME_NAME-theme.md-warn md-tab-item:not([disabled]).md-focused {    background: '{{warn-contrast-0.1}}'; }md-toolbar > md-tabs.md-THEME_NAME-theme md-tabs-wrapper {  background-color: '{{primary-color}}'; }md-toolbar > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]) {  color: '{{primary-100}}'; }  md-toolbar > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-active, md-toolbar > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-focused {    color: '{{primary-contrast}}'; }  md-toolbar > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-focused {    background: '{{primary-contrast-0.1}}'; }md-toolbar.md-accent > md-tabs.md-THEME_NAME-theme md-tabs-wrapper {  background-color: '{{accent-color}}'; }md-toolbar.md-accent > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]) {  color: '{{accent-100}}'; }  md-toolbar.md-accent > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-active, md-toolbar.md-accent > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-focused {    color: '{{accent-contrast}}'; }  md-toolbar.md-accent > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-focused {    background: '{{accent-contrast-0.1}}'; }md-toolbar.md-accent > md-tabs.md-THEME_NAME-theme md-ink-bar {  color: '{{primary-600-1}}';  background: '{{primary-600-1}}'; }md-toolbar.md-warn > md-tabs.md-THEME_NAME-theme md-tabs-wrapper {  background-color: '{{warn-color}}'; }md-toolbar.md-warn > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]) {  color: '{{warn-100}}'; }  md-toolbar.md-warn > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-active, md-toolbar.md-warn > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-focused {    color: '{{warn-contrast}}'; }  md-toolbar.md-warn > md-tabs.md-THEME_NAME-theme md-tab-item:not([disabled]).md-focused {    background: '{{warn-contrast-0.1}}'; }md-toast.md-THEME_NAME-theme {  background-color: #323232;  color: '{{background-50}}'; }  md-toast.md-THEME_NAME-theme .md-button {    color: '{{background-50}}'; }    md-toast.md-THEME_NAME-theme .md-button.md-highlight {      color: '{{primary-A200}}'; }      md-toast.md-THEME_NAME-theme .md-button.md-highlight.md-accent {        color: '{{accent-A200}}'; }      md-toast.md-THEME_NAME-theme .md-button.md-highlight.md-warn {        color: '{{warn-A200}}'; }md-toolbar.md-THEME_NAME-theme {  background-color: '{{primary-color}}';  color: '{{primary-contrast}}'; }  md-toolbar.md-THEME_NAME-theme md-icon {    color: '{{primary-contrast}}'; }  md-toolbar.md-THEME_NAME-theme .md-button {    color: '{{primary-contrast}}'; }  md-toolbar.md-THEME_NAME-theme.md-accent {    background-color: '{{accent-color}}';    color: '{{accent-contrast}}'; }  md-toolbar.md-THEME_NAME-theme.md-warn {    background-color: '{{warn-color}}';    color: '{{warn-contrast}}'; }md-tooltip.md-THEME_NAME-theme {  color: '{{background-A100}}'; }  md-tooltip.md-THEME_NAME-theme .md-background {    background-color: '{{foreground-2}}'; }"); 
+})();
+
+
+})(window, window.angular);;/*!
  * SVG Morpheus v0.1.8
  * https://github.com/alexk111/SVG-Morpheus
  *
@@ -44215,7 +46641,7 @@ $provide.value("$locale", {
 });
 }]);
 ;//! moment.js
-//! version : 2.10.2
+//! version : 2.10.3
 //! authors : Tim Wood, Iskren Chernev, Moment.js contributors
 //! license : MIT
 //! momentjs.com
@@ -44238,28 +46664,12 @@ $provide.value("$locale", {
         hookCallback = callback;
     }
 
-    function defaultParsingFlags() {
-        // We need to deep clone this object.
-        return {
-            empty           : false,
-            unusedTokens    : [],
-            unusedInput     : [],
-            overflow        : -2,
-            charsLeftOver   : 0,
-            nullInput       : false,
-            invalidMonth    : null,
-            invalidFormat   : false,
-            userInvalidated : false,
-            iso             : false
-        };
-    }
-
     function isArray(input) {
         return Object.prototype.toString.call(input) === '[object Array]';
     }
 
     function isDate(input) {
-        return Object.prototype.toString.call(input) === '[object Date]' || input instanceof Date;
+        return input instanceof Date || Object.prototype.toString.call(input) === '[object Date]';
     }
 
     function map(arr, fn) {
@@ -44296,21 +46706,45 @@ $provide.value("$locale", {
         return createLocalOrUTC(input, format, locale, strict, true).utc();
     }
 
+    function defaultParsingFlags() {
+        // We need to deep clone this object.
+        return {
+            empty           : false,
+            unusedTokens    : [],
+            unusedInput     : [],
+            overflow        : -2,
+            charsLeftOver   : 0,
+            nullInput       : false,
+            invalidMonth    : null,
+            invalidFormat   : false,
+            userInvalidated : false,
+            iso             : false
+        };
+    }
+
+    function getParsingFlags(m) {
+        if (m._pf == null) {
+            m._pf = defaultParsingFlags();
+        }
+        return m._pf;
+    }
+
     function valid__isValid(m) {
         if (m._isValid == null) {
+            var flags = getParsingFlags(m);
             m._isValid = !isNaN(m._d.getTime()) &&
-                m._pf.overflow < 0 &&
-                !m._pf.empty &&
-                !m._pf.invalidMonth &&
-                !m._pf.nullInput &&
-                !m._pf.invalidFormat &&
-                !m._pf.userInvalidated;
+                flags.overflow < 0 &&
+                !flags.empty &&
+                !flags.invalidMonth &&
+                !flags.nullInput &&
+                !flags.invalidFormat &&
+                !flags.userInvalidated;
 
             if (m._strict) {
                 m._isValid = m._isValid &&
-                    m._pf.charsLeftOver === 0 &&
-                    m._pf.unusedTokens.length === 0 &&
-                    m._pf.bigHour === undefined;
+                    flags.charsLeftOver === 0 &&
+                    flags.unusedTokens.length === 0 &&
+                    flags.bigHour === undefined;
             }
         }
         return m._isValid;
@@ -44319,10 +46753,10 @@ $provide.value("$locale", {
     function valid__createInvalid (flags) {
         var m = create_utc__createUTC(NaN);
         if (flags != null) {
-            extend(m._pf, flags);
+            extend(getParsingFlags(m), flags);
         }
         else {
-            m._pf.userInvalidated = true;
+            getParsingFlags(m).userInvalidated = true;
         }
 
         return m;
@@ -44358,7 +46792,7 @@ $provide.value("$locale", {
             to._offset = from._offset;
         }
         if (typeof from._pf !== 'undefined') {
-            to._pf = from._pf;
+            to._pf = getParsingFlags(from);
         }
         if (typeof from._locale !== 'undefined') {
             to._locale = from._locale;
@@ -44393,7 +46827,7 @@ $provide.value("$locale", {
     }
 
     function isMoment (obj) {
-        return obj instanceof Moment || (obj != null && hasOwnProp(obj, '_isAMomentObject'));
+        return obj instanceof Moment || (obj != null && obj._isAMomentObject != null);
     }
 
     function toInt(argumentForCoercion) {
@@ -44831,7 +47265,7 @@ $provide.value("$locale", {
         if (month != null) {
             array[MONTH] = month;
         } else {
-            config._pf.invalidMonth = input;
+            getParsingFlags(config).invalidMonth = input;
         }
     });
 
@@ -44915,7 +47349,7 @@ $provide.value("$locale", {
         var overflow;
         var a = m._a;
 
-        if (a && m._pf.overflow === -2) {
+        if (a && getParsingFlags(m).overflow === -2) {
             overflow =
                 a[MONTH]       < 0 || a[MONTH]       > 11  ? MONTH :
                 a[DATE]        < 1 || a[DATE]        > daysInMonth(a[YEAR], a[MONTH]) ? DATE :
@@ -44925,11 +47359,11 @@ $provide.value("$locale", {
                 a[MILLISECOND] < 0 || a[MILLISECOND] > 999 ? MILLISECOND :
                 -1;
 
-            if (m._pf._overflowDayOfYear && (overflow < YEAR || overflow > DATE)) {
+            if (getParsingFlags(m)._overflowDayOfYear && (overflow < YEAR || overflow > DATE)) {
                 overflow = DATE;
             }
 
-            m._pf.overflow = overflow;
+            getParsingFlags(m).overflow = overflow;
         }
 
         return m;
@@ -44942,10 +47376,12 @@ $provide.value("$locale", {
     }
 
     function deprecate(msg, fn) {
-        var firstTime = true;
+        var firstTime = true,
+            msgWithStack = msg + '\n' + (new Error()).stack;
+
         return extend(function () {
             if (firstTime) {
-                warn(msg);
+                warn(msgWithStack);
                 firstTime = false;
             }
             return fn.apply(this, arguments);
@@ -44990,7 +47426,7 @@ $provide.value("$locale", {
             match = from_string__isoRegex.exec(string);
 
         if (match) {
-            config._pf.iso = true;
+            getParsingFlags(config).iso = true;
             for (i = 0, l = isoDates.length; i < l; i++) {
                 if (isoDates[i][1].exec(string)) {
                     // match[5] should be 'T' or undefined
@@ -45270,7 +47706,7 @@ $provide.value("$locale", {
             yearToUse = defaults(config._a[YEAR], currentDate[YEAR]);
 
             if (config._dayOfYear > daysInYear(yearToUse)) {
-                config._pf._overflowDayOfYear = true;
+                getParsingFlags(config)._overflowDayOfYear = true;
             }
 
             date = createUTCDate(yearToUse, 0, config._dayOfYear);
@@ -45366,7 +47802,7 @@ $provide.value("$locale", {
         }
 
         config._a = [];
-        config._pf.empty = true;
+        getParsingFlags(config).empty = true;
 
         // This array is used to make a Date, either with `new Date` or `Date.UTC`
         var string = '' + config._i,
@@ -45382,7 +47818,7 @@ $provide.value("$locale", {
             if (parsedInput) {
                 skipped = string.substr(0, string.indexOf(parsedInput));
                 if (skipped.length > 0) {
-                    config._pf.unusedInput.push(skipped);
+                    getParsingFlags(config).unusedInput.push(skipped);
                 }
                 string = string.slice(string.indexOf(parsedInput) + parsedInput.length);
                 totalParsedInputLength += parsedInput.length;
@@ -45390,27 +47826,29 @@ $provide.value("$locale", {
             // don't parse if it's not a known token
             if (formatTokenFunctions[token]) {
                 if (parsedInput) {
-                    config._pf.empty = false;
+                    getParsingFlags(config).empty = false;
                 }
                 else {
-                    config._pf.unusedTokens.push(token);
+                    getParsingFlags(config).unusedTokens.push(token);
                 }
                 addTimeToArrayFromToken(token, parsedInput, config);
             }
             else if (config._strict && !parsedInput) {
-                config._pf.unusedTokens.push(token);
+                getParsingFlags(config).unusedTokens.push(token);
             }
         }
 
         // add remaining unparsed input length to the string
-        config._pf.charsLeftOver = stringLength - totalParsedInputLength;
+        getParsingFlags(config).charsLeftOver = stringLength - totalParsedInputLength;
         if (string.length > 0) {
-            config._pf.unusedInput.push(string);
+            getParsingFlags(config).unusedInput.push(string);
         }
 
         // clear _12h flag if hour is <= 12
-        if (config._pf.bigHour === true && config._a[HOUR] <= 12) {
-            config._pf.bigHour = undefined;
+        if (getParsingFlags(config).bigHour === true &&
+                config._a[HOUR] <= 12 &&
+                config._a[HOUR] > 0) {
+            getParsingFlags(config).bigHour = undefined;
         }
         // handle meridiem
         config._a[HOUR] = meridiemFixWrap(config._locale, config._a[HOUR], config._meridiem);
@@ -45454,7 +47892,7 @@ $provide.value("$locale", {
             currentScore;
 
         if (config._f.length === 0) {
-            config._pf.invalidFormat = true;
+            getParsingFlags(config).invalidFormat = true;
             config._d = new Date(NaN);
             return;
         }
@@ -45465,7 +47903,6 @@ $provide.value("$locale", {
             if (config._useUTC != null) {
                 tempConfig._useUTC = config._useUTC;
             }
-            tempConfig._pf = defaultParsingFlags();
             tempConfig._f = config._f[i];
             configFromStringAndFormat(tempConfig);
 
@@ -45474,12 +47911,12 @@ $provide.value("$locale", {
             }
 
             // if there is any input that was not parsed add a penalty for that format
-            currentScore += tempConfig._pf.charsLeftOver;
+            currentScore += getParsingFlags(tempConfig).charsLeftOver;
 
             //or tokens
-            currentScore += tempConfig._pf.unusedTokens.length * 10;
+            currentScore += getParsingFlags(tempConfig).unusedTokens.length * 10;
 
-            tempConfig._pf.score = currentScore;
+            getParsingFlags(tempConfig).score = currentScore;
 
             if (scoreToBeat == null || currentScore < scoreToBeat) {
                 scoreToBeat = currentScore;
@@ -45522,6 +47959,8 @@ $provide.value("$locale", {
             configFromStringAndArray(config);
         } else if (format) {
             configFromStringAndFormat(config);
+        } else if (isDate(input)) {
+            config._d = input;
         } else {
             configFromInput(config);
         }
@@ -45574,7 +48013,6 @@ $provide.value("$locale", {
         c._i = input;
         c._f = format;
         c._strict = strict;
-        c._pf = defaultParsingFlags();
 
         return createFromConfig(c);
     }
@@ -46148,11 +48586,25 @@ $provide.value("$locale", {
     }
 
     function from (time, withoutSuffix) {
+        if (!this.isValid()) {
+            return this.localeData().invalidDate();
+        }
         return create__createDuration({to: this, from: time}).locale(this.locale()).humanize(!withoutSuffix);
     }
 
     function fromNow (withoutSuffix) {
         return this.from(local__createLocal(), withoutSuffix);
+    }
+
+    function to (time, withoutSuffix) {
+        if (!this.isValid()) {
+            return this.localeData().invalidDate();
+        }
+        return create__createDuration({from: this, to: time}).locale(this.locale()).humanize(!withoutSuffix);
+    }
+
+    function toNow (withoutSuffix) {
+        return this.to(local__createLocal(), withoutSuffix);
     }
 
     function locale (key) {
@@ -46257,11 +48709,11 @@ $provide.value("$locale", {
     }
 
     function parsingFlags () {
-        return extend({}, this._pf);
+        return extend({}, getParsingFlags(this));
     }
 
     function invalidAt () {
-        return this._pf.overflow;
+        return getParsingFlags(this).overflow;
     }
 
     addFormatToken(0, ['gg', 2], 0, function () {
@@ -46412,7 +48864,7 @@ $provide.value("$locale", {
         if (weekday != null) {
             week.d = weekday;
         } else {
-            config._pf.invalidWeekday = input;
+            getParsingFlags(config).invalidWeekday = input;
         }
     });
 
@@ -46537,7 +48989,7 @@ $provide.value("$locale", {
     });
     addParseToken(['h', 'hh'], function (input, array, config) {
         array[HOUR] = toInt(input);
-        config._pf.bigHour = true;
+        getParsingFlags(config).bigHour = true;
     });
 
     // LOCALES
@@ -46654,6 +49106,8 @@ $provide.value("$locale", {
     momentPrototype__proto.format       = format;
     momentPrototype__proto.from         = from;
     momentPrototype__proto.fromNow      = fromNow;
+    momentPrototype__proto.to           = to;
+    momentPrototype__proto.toNow        = toNow;
     momentPrototype__proto.get          = getSet;
     momentPrototype__proto.invalidAt    = invalidAt;
     momentPrototype__proto.isAfter      = isAfter;
@@ -46842,7 +49296,7 @@ $provide.value("$locale", {
         }
         // Lenient ordinal parsing accepts just a number in addition to
         // number + (possibly) stuff coming from _ordinalParseLenient.
-        this._ordinalParseLenient = new RegExp(this._ordinalParse.source + '|' + /\d{1,2}/.source);
+        this._ordinalParseLenient = new RegExp(this._ordinalParse.source + '|' + (/\d{1,2}/).source);
     }
 
     var prototype__proto = Locale.prototype;
@@ -47059,13 +49513,13 @@ $provide.value("$locale", {
             // handle milliseconds separately because of floating point math errors (issue #1867)
             days = this._days + Math.round(yearsToDays(this._months / 12));
             switch (units) {
-                case 'week'   : return days / 7            + milliseconds / 6048e5;
-                case 'day'    : return days                + milliseconds / 864e5;
-                case 'hour'   : return days * 24           + milliseconds / 36e5;
-                case 'minute' : return days * 24 * 60      + milliseconds / 6e4;
-                case 'second' : return days * 24 * 60 * 60 + milliseconds / 1000;
+                case 'week'   : return days / 7     + milliseconds / 6048e5;
+                case 'day'    : return days         + milliseconds / 864e5;
+                case 'hour'   : return days * 24    + milliseconds / 36e5;
+                case 'minute' : return days * 1440  + milliseconds / 6e4;
+                case 'second' : return days * 86400 + milliseconds / 1000;
                 // Math.floor prevents floating point math errors here
-                case 'millisecond': return Math.floor(days * 24 * 60 * 60 * 1000) + milliseconds;
+                case 'millisecond': return Math.floor(days * 864e5) + milliseconds;
                 default: throw new Error('Unknown unit ' + units);
             }
         }
@@ -47266,7 +49720,7 @@ $provide.value("$locale", {
     // Side effect imports
 
 
-    utils_hooks__hooks.version = '2.10.2';
+    utils_hooks__hooks.version = '2.10.3';
 
     setHookCallback(local__createLocal);
 
@@ -48052,31 +50506,2987 @@ $provide.value("$locale", {
    }
 })(window);
 ;/**
- * @license AngularJS v1.3.15
- * (c) 2010-2014 Google, Inc. http://angularjs.org
+ * @license AngularJS v1.4.0
+ * (c) 2010-2015 Google, Inc. http://angularjs.org
  * License: MIT
  */
 (function(window, angular, undefined) {'use strict';
 
-/* jshint maxlen: false */
+/* jshint ignore:start */
+var noop        = angular.noop;
+var extend      = angular.extend;
+var jqLite      = angular.element;
+var forEach     = angular.forEach;
+var isArray     = angular.isArray;
+var isString    = angular.isString;
+var isObject    = angular.isObject;
+var isUndefined = angular.isUndefined;
+var isDefined   = angular.isDefined;
+var isFunction  = angular.isFunction;
+var isElement   = angular.isElement;
+
+var ELEMENT_NODE = 1;
+var COMMENT_NODE = 8;
+
+var NG_ANIMATE_CLASSNAME = 'ng-animate';
+var NG_ANIMATE_CHILDREN_DATA = '$$ngAnimateChildren';
+
+var isPromiseLike = function(p) {
+  return p && p.then ? true : false;
+}
+
+function assertArg(arg, name, reason) {
+  if (!arg) {
+    throw ngMinErr('areq', "Argument '{0}' is {1}", (name || '?'), (reason || "required"));
+  }
+  return arg;
+}
+
+function mergeClasses(a,b) {
+  if (!a && !b) return '';
+  if (!a) return b;
+  if (!b) return a;
+  if (isArray(a)) a = a.join(' ');
+  if (isArray(b)) b = b.join(' ');
+  return a + ' ' + b;
+}
+
+function packageStyles(options) {
+  var styles = {};
+  if (options && (options.to || options.from)) {
+    styles.to = options.to;
+    styles.from = options.from;
+  }
+  return styles;
+}
+
+function pendClasses(classes, fix, isPrefix) {
+  var className = '';
+  classes = isArray(classes)
+      ? classes
+      : classes && isString(classes) && classes.length
+          ? classes.split(/\s+/)
+          : [];
+  forEach(classes, function(klass, i) {
+    if (klass && klass.length > 0) {
+      className += (i > 0) ? ' ' : '';
+      className += isPrefix ? fix + klass
+                            : klass + fix;
+    }
+  });
+  return className;
+}
+
+function removeFromArray(arr, val) {
+  var index = arr.indexOf(val);
+  if (val >= 0) {
+    arr.splice(index, 1);
+  }
+}
+
+function stripCommentsFromElement(element) {
+  if (element instanceof jqLite) {
+    switch (element.length) {
+      case 0:
+        return [];
+        break;
+
+      case 1:
+        // there is no point of stripping anything if the element
+        // is the only element within the jqLite wrapper.
+        // (it's important that we retain the element instance.)
+        if (element[0].nodeType === ELEMENT_NODE) {
+          return element;
+        }
+        break;
+
+      default:
+        return jqLite(extractElementNode(element));
+        break;
+    }
+  }
+
+  if (element.nodeType === ELEMENT_NODE) {
+    return jqLite(element);
+  }
+}
+
+function extractElementNode(element) {
+  if (!element[0]) return element;
+  for (var i = 0; i < element.length; i++) {
+    var elm = element[i];
+    if (elm.nodeType == ELEMENT_NODE) {
+      return elm;
+    }
+  }
+}
+
+function $$addClass($$jqLite, element, className) {
+  forEach(element, function(elm) {
+    $$jqLite.addClass(elm, className);
+  });
+}
+
+function $$removeClass($$jqLite, element, className) {
+  forEach(element, function(elm) {
+    $$jqLite.removeClass(elm, className);
+  });
+}
+
+function applyAnimationClassesFactory($$jqLite) {
+  return function(element, options) {
+    if (options.addClass) {
+      $$addClass($$jqLite, element, options.addClass);
+      options.addClass = null;
+    }
+    if (options.removeClass) {
+      $$removeClass($$jqLite, element, options.removeClass);
+      options.removeClass = null;
+    }
+  }
+}
+
+function prepareAnimationOptions(options) {
+  options = options || {};
+  if (!options.$$prepared) {
+    var domOperation = options.domOperation || noop;
+    options.domOperation = function() {
+      options.$$domOperationFired = true;
+      domOperation();
+      domOperation = noop;
+    };
+    options.$$prepared = true;
+  }
+  return options;
+}
+
+function applyAnimationStyles(element, options) {
+  applyAnimationFromStyles(element, options);
+  applyAnimationToStyles(element, options);
+}
+
+function applyAnimationFromStyles(element, options) {
+  if (options.from) {
+    element.css(options.from);
+    options.from = null;
+  }
+}
+
+function applyAnimationToStyles(element, options) {
+  if (options.to) {
+    element.css(options.to);
+    options.to = null;
+  }
+}
+
+function mergeAnimationOptions(element, target, newOptions) {
+  var toAdd = (target.addClass || '') + ' ' + (newOptions.addClass || '');
+  var toRemove = (target.removeClass || '') + ' ' + (newOptions.removeClass || '');
+  var classes = resolveElementClasses(element.attr('class'), toAdd, toRemove);
+
+  extend(target, newOptions);
+
+  if (classes.addClass) {
+    target.addClass = classes.addClass;
+  } else {
+    target.addClass = null;
+  }
+
+  if (classes.removeClass) {
+    target.removeClass = classes.removeClass;
+  } else {
+    target.removeClass = null;
+  }
+
+  return target;
+}
+
+function resolveElementClasses(existing, toAdd, toRemove) {
+  var ADD_CLASS = 1;
+  var REMOVE_CLASS = -1;
+
+  var flags = {};
+  existing = splitClassesToLookup(existing);
+
+  toAdd = splitClassesToLookup(toAdd);
+  forEach(toAdd, function(value, key) {
+    flags[key] = ADD_CLASS;
+  });
+
+  toRemove = splitClassesToLookup(toRemove);
+  forEach(toRemove, function(value, key) {
+    flags[key] = flags[key] === ADD_CLASS ? null : REMOVE_CLASS;
+  });
+
+  var classes = {
+    addClass: '',
+    removeClass: ''
+  };
+
+  forEach(flags, function(val, klass) {
+    var prop, allow;
+    if (val === ADD_CLASS) {
+      prop = 'addClass';
+      allow = !existing[klass];
+    } else if (val === REMOVE_CLASS) {
+      prop = 'removeClass';
+      allow = existing[klass];
+    }
+    if (allow) {
+      if (classes[prop].length) {
+        classes[prop] += ' ';
+      }
+      classes[prop] += klass;
+    }
+  });
+
+  function splitClassesToLookup(classes) {
+    if (isString(classes)) {
+      classes = classes.split(' ');
+    }
+
+    var obj = {};
+    forEach(classes, function(klass) {
+      // sometimes the split leaves empty string values
+      // incase extra spaces were applied to the options
+      if (klass.length) {
+        obj[klass] = true;
+      }
+    });
+    return obj;
+  }
+
+  return classes;
+}
+
+function getDomNode(element) {
+  return (element instanceof angular.element) ? element[0] : element;
+}
+
+var $$rAFSchedulerFactory = ['$$rAF', function($$rAF) {
+  var tickQueue = [];
+  var cancelFn;
+
+  function scheduler(tasks) {
+    // we make a copy since RAFScheduler mutates the state
+    // of the passed in array variable and this would be difficult
+    // to track down on the outside code
+    tickQueue.push([].concat(tasks));
+    nextTick();
+  }
+
+  /* waitUntilQuiet does two things:
+   * 1. It will run the FINAL `fn` value only when an uncancelled RAF has passed through
+   * 2. It will delay the next wave of tasks from running until the quiet `fn` has run.
+   *
+   * The motivation here is that animation code can request more time from the scheduler
+   * before the next wave runs. This allows for certain DOM properties such as classes to
+   * be resolved in time for the next animation to run.
+   */
+  scheduler.waitUntilQuiet = function(fn) {
+    if (cancelFn) cancelFn();
+
+    cancelFn = $$rAF(function() {
+      cancelFn = null;
+      fn();
+      nextTick();
+    });
+  };
+
+  return scheduler;
+
+  function nextTick() {
+    if (!tickQueue.length) return;
+
+    var updatedQueue = [];
+    for (var i = 0; i < tickQueue.length; i++) {
+      var innerQueue = tickQueue[i];
+      runNextTask(innerQueue);
+      if (innerQueue.length) {
+        updatedQueue.push(innerQueue);
+      }
+    }
+    tickQueue = updatedQueue;
+
+    if (!cancelFn) {
+      $$rAF(function() {
+        if (!cancelFn) nextTick();
+      });
+    }
+  }
+
+  function runNextTask(tasks) {
+    var nextTask = tasks.shift();
+    nextTask();
+  }
+}];
+
+var $$AnimateChildrenDirective = [function() {
+  return function(scope, element, attrs) {
+    var val = attrs.ngAnimateChildren;
+    if (angular.isString(val) && val.length === 0) { //empty attribute
+      element.data(NG_ANIMATE_CHILDREN_DATA, true);
+    } else {
+      attrs.$observe('ngAnimateChildren', function(value) {
+        value = value === 'on' || value === 'true';
+        element.data(NG_ANIMATE_CHILDREN_DATA, value);
+      });
+    }
+  };
+}];
+
+/**
+ * @ngdoc service
+ * @name $animateCss
+ * @kind object
+ *
+ * @description
+ * The `$animateCss` service is a useful utility to trigger customized CSS-based transitions/keyframes
+ * from a JavaScript-based animation or directly from a directive. The purpose of `$animateCss` is NOT
+ * to side-step how `$animate` and ngAnimate work, but the goal is to allow pre-existing animations or
+ * directives to create more complex animations that can be purely driven using CSS code.
+ *
+ * Note that only browsers that support CSS transitions and/or keyframe animations are capable of
+ * rendering animations triggered via `$animateCss` (bad news for IE9 and lower).
+ *
+ * ## Usage
+ * Once again, `$animateCss` is designed to be used inside of a registered JavaScript animation that
+ * is powered by ngAnimate. It is possible to use `$animateCss` directly inside of a directive, however,
+ * any automatic control over cancelling animations and/or preventing animations from being run on
+ * child elements will not be handled by Angular. For this to work as expected, please use `$animate` to
+ * trigger the animation and then setup a JavaScript animation that injects `$animateCss` to trigger
+ * the CSS animation.
+ *
+ * The example below shows how we can create a folding animation on an element using `ng-if`:
+ *
+ * ```html
+ * <!-- notice the `fold-animation` CSS class -->
+ * <div ng-if="onOff" class="fold-animation">
+ *   This element will go BOOM
+ * </div>
+ * <button ng-click="onOff=true">Fold In</button>
+ * ```
+ *
+ * Now we create the **JavaScript animation** that will trigger the CSS transition:
+ *
+ * ```js
+ * ngModule.animation('.fold-animation', ['$animateCss', function($animateCss) {
+ *   return {
+ *     enter: function(element, doneFn) {
+ *       var height = element[0].offsetHeight;
+ *       return $animateCss(element, {
+ *         from: { height:'0px' },
+ *         to: { height:height + 'px' },
+ *         duration: 1 // one second
+ *       });
+ *     }
+ *   }
+ * }]);
+ * ```
+ *
+ * ## More Advanced Uses
+ *
+ * `$animateCss` is the underlying code that ngAnimate uses to power **CSS-based animations** behind the scenes. Therefore CSS hooks
+ * like `.ng-EVENT`, `.ng-EVENT-active`, `.ng-EVENT-stagger` are all features that can be triggered using `$animateCss` via JavaScript code.
+ *
+ * This also means that just about any combination of adding classes, removing classes, setting styles, dynamically setting a keyframe animation,
+ * applying a hardcoded duration or delay value, changing the animation easing or applying a stagger animation are all options that work with
+ * `$animateCss`. The service itself is smart enough to figure out the combination of options and examine the element styling properties in order
+ * to provide a working animation that will run in CSS.
+ *
+ * The example below showcases a more advanced version of the `.fold-animation` from the example above:
+ *
+ * ```js
+ * ngModule.animation('.fold-animation', ['$animateCss', function($animateCss) {
+ *   return {
+ *     enter: function(element, doneFn) {
+ *       var height = element[0].offsetHeight;
+ *       return $animateCss(element, {
+ *         addClass: 'red large-text pulse-twice',
+ *         easing: 'ease-out',
+ *         from: { height:'0px' },
+ *         to: { height:height + 'px' },
+ *         duration: 1 // one second
+ *       });
+ *     }
+ *   }
+ * }]);
+ * ```
+ *
+ * Since we're adding/removing CSS classes then the CSS transition will also pick those up:
+ *
+ * ```css
+ * /&#42; since a hardcoded duration value of 1 was provided in the JavaScript animation code,
+ * the CSS classes below will be transitioned despite them being defined as regular CSS classes &#42;/
+ * .red { background:red; }
+ * .large-text { font-size:20px; }
+ *
+ * /&#42; we can also use a keyframe animation and $animateCss will make it work alongside the transition &#42;/
+ * .pulse-twice {
+ *   animation: 0.5s pulse linear 2;
+ *   -webkit-animation: 0.5s pulse linear 2;
+ * }
+ *
+ * @keyframes pulse {
+ *   from { transform: scale(0.5); }
+ *   to { transform: scale(1.5); }
+ * }
+ *
+ * @-webkit-keyframes pulse {
+ *   from { -webkit-transform: scale(0.5); }
+ *   to { -webkit-transform: scale(1.5); }
+ * }
+ * ```
+ *
+ * Given this complex combination of CSS classes, styles and options, `$animateCss` will figure everything out and make the animation happen.
+ *
+ * ## How the Options are handled
+ *
+ * `$animateCss` is very versatile and intelligent when it comes to figuring out what configurations to apply to the element to ensure the animation
+ * works with the options provided. Say for example we were adding a class that contained a keyframe value and we wanted to also animate some inline
+ * styles using the `from` and `to` properties.
+ *
+ * ```js
+ * var animator = $animateCss(element, {
+ *   from: { background:'red' },
+ *   to: { background:'blue' }
+ * });
+ * animator.start();
+ * ```
+ *
+ * ```css
+ * .rotating-animation {
+ *   animation:0.5s rotate linear;
+ *   -webkit-animation:0.5s rotate linear;
+ * }
+ *
+ * @keyframes rotate {
+ *   from { transform: rotate(0deg); }
+ *   to { transform: rotate(360deg); }
+ * }
+ *
+ * @-webkit-keyframes rotate {
+ *   from { -webkit-transform: rotate(0deg); }
+ *   to { -webkit-transform: rotate(360deg); }
+ * }
+ * ```
+ *
+ * The missing pieces here are that we do not have a transition set (within the CSS code nor within the `$animateCss` options) and the duration of the animation is
+ * going to be detected from what the keyframe styles on the CSS class are. In this event, `$animateCss` will automatically create an inline transition
+ * style matching the duration detected from the keyframe style (which is present in the CSS class that is being added) and then prepare both the transition
+ * and keyframe animations to run in parallel on the element. Then when the animation is underway the provided `from` and `to` CSS styles will be applied
+ * and spread across the transition and keyframe animation.
+ *
+ * ## What is returned
+ *
+ * `$animateCss` works in two stages: a preparation phase and an animation phase. Therefore when `$animateCss` is first called it will NOT actually
+ * start the animation. All that is going on here is that the element is being prepared for the animation (which means that the generated CSS classes are
+ * added and removed on the element). Once `$animateCss` is called it will return an object with the following properties:
+ *
+ * ```js
+ * var animator = $animateCss(element, { ... });
+ * ```
+ *
+ * Now what do the contents of our `animator` variable look like:
+ *
+ * ```js
+ * {
+ *   // starts the animation
+ *   start: Function,
+ *
+ *   // ends (aborts) the animation
+ *   end: Function
+ * }
+ * ```
+ *
+ * To actually start the animation we need to run `animation.start()` which will then return a promise that we can hook into to detect when the animation ends.
+ * If we choose not to run the animation then we MUST run `animation.end()` to perform a cleanup on the element (since some CSS classes and stlyes may have been
+ * applied to the element during the preparation phase). Note that all other properties such as duration, delay, transitions and keyframes are just properties
+ * and that changing them will not reconfigure the parameters of the animation.
+ *
+ * ### runner.done() vs runner.then()
+ * It is documented that `animation.start()` will return a promise object and this is true, however, there is also an additional method available on the
+ * runner called `.done(callbackFn)`. The done method works the same as `.finally(callbackFn)`, however, it does **not trigger a digest to occur**.
+ * Therefore, for performance reasons, it's always best to use `runner.done(callback)` instead of `runner.then()`, `runner.catch()` or `runner.finally()`
+ * unless you really need a digest to kick off afterwards.
+ *
+ * Keep in mind that, to make this easier, ngAnimate has tweaked the JS animations API to recognize when a runner instance is returned from $animateCss
+ * (so there is no need to call `runner.done(doneFn)` inside of your JavaScript animation code). Check the [animation code above](#usage) to see how this works.
+ *
+ * @param {DOMElement} element the element that will be animated
+ * @param {object} options the animation-related options that will be applied during the animation
+ *
+ * * `event` - The DOM event (e.g. enter, leave, move). When used, a generated CSS class of `ng-EVENT` and `ng-EVENT-active` will be applied
+ * to the element during the animation. Multiple events can be provided when spaces are used as a separator. (Note that this will not perform any DOM operation.)
+ * * `easing` - The CSS easing value that will be applied to the transition or keyframe animation (or both).
+ * * `transition` - The raw CSS transition style that will be used (e.g. `1s linear all`).
+ * * `keyframe` - The raw CSS keyframe animation style that will be used (e.g. `1s my_animation linear`).
+ * * `from` - The starting CSS styles (a key/value object) that will be applied at the start of the animation.
+ * * `to` - The ending CSS styles (a key/value object) that will be applied across the animation via a CSS transition.
+ * * `addClass` - A space separated list of CSS classes that will be added to the element and spread across the animation.
+ * * `removeClass` - A space separated list of CSS classes that will be removed from the element and spread across the animation.
+ * * `duration` - A number value representing the total duration of the transition and/or keyframe (note that a value of 1 is 1000ms). If a value of `0`
+ * is provided then the animation will be skipped entirely.
+ * * `delay` - A number value representing the total delay of the transition and/or keyframe (note that a value of 1 is 1000ms). If a value of `true` is
+ * used then whatever delay value is detected from the CSS classes will be mirrored on the elements styles (e.g. by setting delay true then the style value
+ * of the element will be `transition-delay: DETECTED_VALUE`). Using `true` is useful when you want the CSS classes and inline styles to all share the same
+ * CSS delay value.
+ * * `stagger` - A numeric time value representing the delay between successively animated elements
+ * ({@link ngAnimate#css-staggering-animations Click here to learn how CSS-based staggering works in ngAnimate.})
+ * * `staggerIndex` - The numeric index representing the stagger item (e.g. a value of 5 is equal to the sixth item in the stagger; therefore when a
+ * `stagger` option value of `0.1` is used then there will be a stagger delay of `600ms`)
+ * `applyClassesEarly` - Whether or not the classes being added or removed will be used when detecting the animation. This is set by `$animate` when enter/leave/move animations are fired to ensure that the CSS classes are resolved in time. (Note that this will prevent any transitions from occuring on the classes being added and removed.)
+ *
+ * @return {object} an object with start and end methods and details about the animation.
+ *
+ * * `start` - The method to start the animation. This will return a `Promise` when called.
+ * * `end` - This method will cancel the animation and remove all applied CSS classes and styles.
+ */
+
+// Detect proper transitionend/animationend event names.
+var CSS_PREFIX = '', TRANSITION_PROP, TRANSITIONEND_EVENT, ANIMATION_PROP, ANIMATIONEND_EVENT;
+
+// If unprefixed events are not supported but webkit-prefixed are, use the latter.
+// Otherwise, just use W3C names, browsers not supporting them at all will just ignore them.
+// Note: Chrome implements `window.onwebkitanimationend` and doesn't implement `window.onanimationend`
+// but at the same time dispatches the `animationend` event and not `webkitAnimationEnd`.
+// Register both events in case `window.onanimationend` is not supported because of that,
+// do the same for `transitionend` as Safari is likely to exhibit similar behavior.
+// Also, the only modern browser that uses vendor prefixes for transitions/keyframes is webkit
+// therefore there is no reason to test anymore for other vendor prefixes:
+// http://caniuse.com/#search=transition
+if (window.ontransitionend === undefined && window.onwebkittransitionend !== undefined) {
+  CSS_PREFIX = '-webkit-';
+  TRANSITION_PROP = 'WebkitTransition';
+  TRANSITIONEND_EVENT = 'webkitTransitionEnd transitionend';
+} else {
+  TRANSITION_PROP = 'transition';
+  TRANSITIONEND_EVENT = 'transitionend';
+}
+
+if (window.onanimationend === undefined && window.onwebkitanimationend !== undefined) {
+  CSS_PREFIX = '-webkit-';
+  ANIMATION_PROP = 'WebkitAnimation';
+  ANIMATIONEND_EVENT = 'webkitAnimationEnd animationend';
+} else {
+  ANIMATION_PROP = 'animation';
+  ANIMATIONEND_EVENT = 'animationend';
+}
+
+var DURATION_KEY = 'Duration';
+var PROPERTY_KEY = 'Property';
+var DELAY_KEY = 'Delay';
+var TIMING_KEY = 'TimingFunction';
+var ANIMATION_ITERATION_COUNT_KEY = 'IterationCount';
+var ANIMATION_PLAYSTATE_KEY = 'PlayState';
+var ELAPSED_TIME_MAX_DECIMAL_PLACES = 3;
+var CLOSING_TIME_BUFFER = 1.5;
+var ONE_SECOND = 1000;
+var BASE_TEN = 10;
+
+var SAFE_FAST_FORWARD_DURATION_VALUE = 9999;
+
+var ANIMATION_DELAY_PROP = ANIMATION_PROP + DELAY_KEY;
+var ANIMATION_DURATION_PROP = ANIMATION_PROP + DURATION_KEY;
+
+var TRANSITION_DELAY_PROP = TRANSITION_PROP + DELAY_KEY;
+var TRANSITION_DURATION_PROP = TRANSITION_PROP + DURATION_KEY;
+
+var DETECT_CSS_PROPERTIES = {
+  transitionDuration:      TRANSITION_DURATION_PROP,
+  transitionDelay:         TRANSITION_DELAY_PROP,
+  transitionProperty:      TRANSITION_PROP + PROPERTY_KEY,
+  animationDuration:       ANIMATION_DURATION_PROP,
+  animationDelay:          ANIMATION_DELAY_PROP,
+  animationIterationCount: ANIMATION_PROP + ANIMATION_ITERATION_COUNT_KEY
+};
+
+var DETECT_STAGGER_CSS_PROPERTIES = {
+  transitionDuration:      TRANSITION_DURATION_PROP,
+  transitionDelay:         TRANSITION_DELAY_PROP,
+  animationDuration:       ANIMATION_DURATION_PROP,
+  animationDelay:          ANIMATION_DELAY_PROP
+};
+
+function computeCssStyles($window, element, properties) {
+  var styles = Object.create(null);
+  var detectedStyles = $window.getComputedStyle(element) || {};
+  forEach(properties, function(formalStyleName, actualStyleName) {
+    var val = detectedStyles[formalStyleName];
+    if (val) {
+      var c = val.charAt(0);
+
+      // only numerical-based values have a negative sign or digit as the first value
+      if (c === '-' || c === '+' || c >= 0) {
+        val = parseMaxTime(val);
+      }
+
+      // by setting this to null in the event that the delay is not set or is set directly as 0
+      // then we can still allow for zegative values to be used later on and not mistake this
+      // value for being greater than any other negative value.
+      if (val === 0) {
+        val = null;
+      }
+      styles[actualStyleName] = val;
+    }
+  });
+
+  return styles;
+}
+
+function parseMaxTime(str) {
+  var maxValue = 0;
+  var values = str.split(/\s*,\s*/);
+  forEach(values, function(value) {
+    // it's always safe to consider only second values and omit `ms` values since
+    // getComputedStyle will always handle the conversion for us
+    if (value.charAt(value.length - 1) == 's') {
+      value = value.substring(0, value.length - 1);
+    }
+    value = parseFloat(value) || 0;
+    maxValue = maxValue ? Math.max(value, maxValue) : value;
+  });
+  return maxValue;
+}
+
+function truthyTimingValue(val) {
+  return val === 0 || val != null;
+}
+
+function getCssTransitionDurationStyle(duration, applyOnlyDuration) {
+  var style = TRANSITION_PROP;
+  var value = duration + 's';
+  if (applyOnlyDuration) {
+    style += DURATION_KEY;
+  } else {
+    value += ' linear all';
+  }
+  return [style, value];
+}
+
+function getCssKeyframeDurationStyle(duration) {
+  return [ANIMATION_DURATION_PROP, duration + 's'];
+}
+
+function getCssDelayStyle(delay, isKeyframeAnimation) {
+  var prop = isKeyframeAnimation ? ANIMATION_DELAY_PROP : TRANSITION_DELAY_PROP;
+  return [prop, delay + 's'];
+}
+
+function blockTransitions(node, duration) {
+  // we use a negative delay value since it performs blocking
+  // yet it doesn't kill any existing transitions running on the
+  // same element which makes this safe for class-based animations
+  var value = duration ? '-' + duration + 's' : '';
+  applyInlineStyle(node, [TRANSITION_DELAY_PROP, value]);
+  return [TRANSITION_DELAY_PROP, value];
+}
+
+function blockKeyframeAnimations(node, applyBlock) {
+  var value = applyBlock ? 'paused' : '';
+  var key = ANIMATION_PROP + ANIMATION_PLAYSTATE_KEY;
+  applyInlineStyle(node, [key, value]);
+  return [key, value];
+}
+
+function applyInlineStyle(node, styleTuple) {
+  var prop = styleTuple[0];
+  var value = styleTuple[1];
+  node.style[prop] = value;
+}
+
+function createLocalCacheLookup() {
+  var cache = Object.create(null);
+  return {
+    flush: function() {
+      cache = Object.create(null);
+    },
+
+    count: function(key) {
+      var entry = cache[key];
+      return entry ? entry.total : 0;
+    },
+
+    get: function(key) {
+      var entry = cache[key];
+      return entry && entry.value;
+    },
+
+    put: function(key, value) {
+      if (!cache[key]) {
+        cache[key] = { total: 1, value: value };
+      } else {
+        cache[key].total++;
+      }
+    }
+  };
+}
+
+var $AnimateCssProvider = ['$animateProvider', function($animateProvider) {
+  var gcsLookup = createLocalCacheLookup();
+  var gcsStaggerLookup = createLocalCacheLookup();
+
+  this.$get = ['$window', '$$jqLite', '$$AnimateRunner', '$timeout',
+               '$document', '$sniffer', '$$rAFScheduler',
+       function($window,   $$jqLite,   $$AnimateRunner,   $timeout,
+                $document,   $sniffer,   $$rAFScheduler) {
+
+    var applyAnimationClasses = applyAnimationClassesFactory($$jqLite);
+
+    var parentCounter = 0;
+    function gcsHashFn(node, extraClasses) {
+      var KEY = "$$ngAnimateParentKey";
+      var parentNode = node.parentNode;
+      var parentID = parentNode[KEY] || (parentNode[KEY] = ++parentCounter);
+      return parentID + '-' + node.getAttribute('class') + '-' + extraClasses;
+    }
+
+    function computeCachedCssStyles(node, className, cacheKey, properties) {
+      var timings = gcsLookup.get(cacheKey);
+
+      if (!timings) {
+        timings = computeCssStyles($window, node, properties);
+        if (timings.animationIterationCount === 'infinite') {
+          timings.animationIterationCount = 1;
+        }
+      }
+
+      // we keep putting this in multiple times even though the value and the cacheKey are the same
+      // because we're keeping an interal tally of how many duplicate animations are detected.
+      gcsLookup.put(cacheKey, timings);
+      return timings;
+    }
+
+    function computeCachedCssStaggerStyles(node, className, cacheKey, properties) {
+      var stagger;
+
+      // if we have one or more existing matches of matching elements
+      // containing the same parent + CSS styles (which is how cacheKey works)
+      // then staggering is possible
+      if (gcsLookup.count(cacheKey) > 0) {
+        stagger = gcsStaggerLookup.get(cacheKey);
+
+        if (!stagger) {
+          var staggerClassName = pendClasses(className, '-stagger');
+
+          $$jqLite.addClass(node, staggerClassName);
+
+          stagger = computeCssStyles($window, node, properties);
+
+          // force the conversion of a null value to zero incase not set
+          stagger.animationDuration = Math.max(stagger.animationDuration, 0);
+          stagger.transitionDuration = Math.max(stagger.transitionDuration, 0);
+
+          $$jqLite.removeClass(node, staggerClassName);
+
+          gcsStaggerLookup.put(cacheKey, stagger);
+        }
+      }
+
+      return stagger || {};
+    }
+
+    var bod = getDomNode($document).body;
+    var rafWaitQueue = [];
+    function waitUntilQuiet(callback) {
+      rafWaitQueue.push(callback);
+      $$rAFScheduler.waitUntilQuiet(function() {
+        gcsLookup.flush();
+        gcsStaggerLookup.flush();
+
+        //the line below will force the browser to perform a repaint so
+        //that all the animated elements within the animation frame will
+        //be properly updated and drawn on screen. This is required to
+        //ensure that the preparation animation is properly flushed so that
+        //the active state picks up from there. DO NOT REMOVE THIS LINE.
+        //DO NOT OPTIMIZE THIS LINE. THE MINIFIER WILL REMOVE IT OTHERWISE WHICH
+        //WILL RESULT IN AN UNPREDICTABLE BUG THAT IS VERY HARD TO TRACK DOWN AND
+        //WILL TAKE YEARS AWAY FROM YOUR LIFE.
+        var width = bod.offsetWidth + 1;
+
+        // we use a for loop to ensure that if the queue is changed
+        // during this looping then it will consider new requests
+        for (var i = 0; i < rafWaitQueue.length; i++) {
+          rafWaitQueue[i](width);
+        }
+        rafWaitQueue.length = 0;
+      });
+    }
+
+    return init;
+
+    function computeTimings(node, className, cacheKey) {
+      var timings = computeCachedCssStyles(node, className, cacheKey, DETECT_CSS_PROPERTIES);
+      var aD = timings.animationDelay;
+      var tD = timings.transitionDelay;
+      timings.maxDelay = aD && tD
+          ? Math.max(aD, tD)
+          : (aD || tD);
+      timings.maxDuration = Math.max(
+          timings.animationDuration * timings.animationIterationCount,
+          timings.transitionDuration);
+
+      return timings;
+    }
+
+    function init(element, options) {
+      var node = getDomNode(element);
+      options = prepareAnimationOptions(options);
+
+      var temporaryStyles = [];
+      var classes = element.attr('class');
+      var styles = packageStyles(options);
+      var animationClosed;
+      var animationPaused;
+      var animationCompleted;
+      var runner;
+      var runnerHost;
+      var maxDelay;
+      var maxDelayTime;
+      var maxDuration;
+      var maxDurationTime;
+
+      if (options.duration === 0 || (!$sniffer.animations && !$sniffer.transitions)) {
+        return closeAndReturnNoopAnimator();
+      }
+
+      var method = options.event && isArray(options.event)
+            ? options.event.join(' ')
+            : options.event;
+
+      var isStructural = method && options.structural;
+      var structuralClassName = '';
+      var addRemoveClassName = '';
+
+      if (isStructural) {
+        structuralClassName = pendClasses(method, 'ng-', true);
+      } else if (method) {
+        structuralClassName = method;
+      }
+
+      if (options.addClass) {
+        addRemoveClassName += pendClasses(options.addClass, '-add');
+      }
+
+      if (options.removeClass) {
+        if (addRemoveClassName.length) {
+          addRemoveClassName += ' ';
+        }
+        addRemoveClassName += pendClasses(options.removeClass, '-remove');
+      }
+
+      // there may be a situation where a structural animation is combined together
+      // with CSS classes that need to resolve before the animation is computed.
+      // However this means that there is no explicit CSS code to block the animation
+      // from happening (by setting 0s none in the class name). If this is the case
+      // we need to apply the classes before the first rAF so we know to continue if
+      // there actually is a detected transition or keyframe animation
+      if (options.applyClassesEarly && addRemoveClassName.length) {
+        applyAnimationClasses(element, options);
+        addRemoveClassName = '';
+      }
+
+      var setupClasses = [structuralClassName, addRemoveClassName].join(' ').trim();
+      var fullClassName = classes + ' ' + setupClasses;
+      var activeClasses = pendClasses(setupClasses, '-active');
+      var hasToStyles = styles.to && Object.keys(styles.to).length > 0;
+
+      // there is no way we can trigger an animation since no styles and
+      // no classes are being applied which would then trigger a transition
+      if (!hasToStyles && !setupClasses) {
+        return closeAndReturnNoopAnimator();
+      }
+
+      var cacheKey, stagger;
+      if (options.stagger > 0) {
+        var staggerVal = parseFloat(options.stagger);
+        stagger = {
+          transitionDelay: staggerVal,
+          animationDelay: staggerVal,
+          transitionDuration: 0,
+          animationDuration: 0
+        };
+      } else {
+        cacheKey = gcsHashFn(node, fullClassName);
+        stagger = computeCachedCssStaggerStyles(node, setupClasses, cacheKey, DETECT_STAGGER_CSS_PROPERTIES);
+      }
+
+      $$jqLite.addClass(element, setupClasses);
+
+      var applyOnlyDuration;
+
+      if (options.transitionStyle) {
+        var transitionStyle = [TRANSITION_PROP, options.transitionStyle];
+        applyInlineStyle(node, transitionStyle);
+        temporaryStyles.push(transitionStyle);
+      }
+
+      if (options.duration >= 0) {
+        applyOnlyDuration = node.style[TRANSITION_PROP].length > 0;
+        var durationStyle = getCssTransitionDurationStyle(options.duration, applyOnlyDuration);
+
+        // we set the duration so that it will be picked up by getComputedStyle later
+        applyInlineStyle(node, durationStyle);
+        temporaryStyles.push(durationStyle);
+      }
+
+      if (options.keyframeStyle) {
+        var keyframeStyle = [ANIMATION_PROP, options.keyframeStyle];
+        applyInlineStyle(node, keyframeStyle);
+        temporaryStyles.push(keyframeStyle);
+      }
+
+      var itemIndex = stagger
+          ? options.staggerIndex >= 0
+              ? options.staggerIndex
+              : gcsLookup.count(cacheKey)
+          : 0;
+
+      var isFirst = itemIndex === 0;
+
+      // this is a pre-emptive way of forcing the setup classes to be added and applied INSTANTLY
+      // without causing any combination of transitions to kick in. By adding a negative delay value
+      // it forces the setup class' transition to end immediately. We later then remove the negative
+      // transition delay to allow for the transition to naturally do it's thing. The beauty here is
+      // that if there is no transition defined then nothing will happen and this will also allow
+      // other transitions to be stacked on top of each other without any chopping them out.
+      if (isFirst) {
+        blockTransitions(node, SAFE_FAST_FORWARD_DURATION_VALUE);
+      }
+
+      var timings = computeTimings(node, fullClassName, cacheKey);
+      var relativeDelay = timings.maxDelay;
+      maxDelay = Math.max(relativeDelay, 0);
+      maxDuration = timings.maxDuration;
+
+      var flags = {};
+      flags.hasTransitions          = timings.transitionDuration > 0;
+      flags.hasAnimations           = timings.animationDuration > 0;
+      flags.hasTransitionAll        = flags.hasTransitions && timings.transitionProperty == 'all';
+      flags.applyTransitionDuration = hasToStyles && (
+                                        (flags.hasTransitions && !flags.hasTransitionAll)
+                                         || (flags.hasAnimations && !flags.hasTransitions));
+      flags.applyAnimationDuration  = options.duration && flags.hasAnimations;
+      flags.applyTransitionDelay    = truthyTimingValue(options.delay) && (flags.applyTransitionDuration || flags.hasTransitions);
+      flags.applyAnimationDelay     = truthyTimingValue(options.delay) && flags.hasAnimations;
+      flags.recalculateTimingStyles = addRemoveClassName.length > 0;
+
+      if (flags.applyTransitionDuration || flags.applyAnimationDuration) {
+        maxDuration = options.duration ? parseFloat(options.duration) : maxDuration;
+
+        if (flags.applyTransitionDuration) {
+          flags.hasTransitions = true;
+          timings.transitionDuration = maxDuration;
+          applyOnlyDuration = node.style[TRANSITION_PROP + PROPERTY_KEY].length > 0;
+          temporaryStyles.push(getCssTransitionDurationStyle(maxDuration, applyOnlyDuration));
+        }
+
+        if (flags.applyAnimationDuration) {
+          flags.hasAnimations = true;
+          timings.animationDuration = maxDuration;
+          temporaryStyles.push(getCssKeyframeDurationStyle(maxDuration));
+        }
+      }
+
+      if (maxDuration === 0 && !flags.recalculateTimingStyles) {
+        return closeAndReturnNoopAnimator();
+      }
+
+      // we need to recalculate the delay value since we used a pre-emptive negative
+      // delay value and the delay value is required for the final event checking. This
+      // property will ensure that this will happen after the RAF phase has passed.
+      if (options.duration == null && timings.transitionDuration > 0) {
+        flags.recalculateTimingStyles = flags.recalculateTimingStyles || isFirst;
+      }
+
+      maxDelayTime = maxDelay * ONE_SECOND;
+      maxDurationTime = maxDuration * ONE_SECOND;
+      if (!options.skipBlocking) {
+        flags.blockTransition = timings.transitionDuration > 0;
+        flags.blockKeyframeAnimation = timings.animationDuration > 0 &&
+                                       stagger.animationDelay > 0 &&
+                                       stagger.animationDuration === 0;
+      }
+
+      applyAnimationFromStyles(element, options);
+      if (!flags.blockTransition) {
+        blockTransitions(node, false);
+      }
+
+      applyBlocking(maxDuration);
+
+      // TODO(matsko): for 1.5 change this code to have an animator object for better debugging
+      return {
+        $$willAnimate: true,
+        end: endFn,
+        start: function() {
+          if (animationClosed) return;
+
+          runnerHost = {
+            end: endFn,
+            cancel: cancelFn,
+            resume: null, //this will be set during the start() phase
+            pause: null
+          };
+
+          runner = new $$AnimateRunner(runnerHost);
+
+          waitUntilQuiet(start);
+
+          // we don't have access to pause/resume the animation
+          // since it hasn't run yet. AnimateRunner will therefore
+          // set noop functions for resume and pause and they will
+          // later be overridden once the animation is triggered
+          return runner;
+        }
+      };
+
+      function endFn() {
+        close();
+      }
+
+      function cancelFn() {
+        close(true);
+      }
+
+      function close(rejected) { // jshint ignore:line
+        // if the promise has been called already then we shouldn't close
+        // the animation again
+        if (animationClosed || (animationCompleted && animationPaused)) return;
+        animationClosed = true;
+        animationPaused = false;
+
+        $$jqLite.removeClass(element, setupClasses);
+        $$jqLite.removeClass(element, activeClasses);
+
+        blockKeyframeAnimations(node, false);
+        blockTransitions(node, false);
+
+        forEach(temporaryStyles, function(entry) {
+          // There is only one way to remove inline style properties entirely from elements.
+          // By using `removeProperty` this works, but we need to convert camel-cased CSS
+          // styles down to hyphenated values.
+          node.style[entry[0]] = '';
+        });
+
+        applyAnimationClasses(element, options);
+        applyAnimationStyles(element, options);
+
+        // the reason why we have this option is to allow a synchronous closing callback
+        // that is fired as SOON as the animation ends (when the CSS is removed) or if
+        // the animation never takes off at all. A good example is a leave animation since
+        // the element must be removed just after the animation is over or else the element
+        // will appear on screen for one animation frame causing an overbearing flicker.
+        if (options.onDone) {
+          options.onDone();
+        }
+
+        // if the preparation function fails then the promise is not setup
+        if (runner) {
+          runner.complete(!rejected);
+        }
+      }
+
+      function applyBlocking(duration) {
+        if (flags.blockTransition) {
+          blockTransitions(node, duration);
+        }
+
+        if (flags.blockKeyframeAnimation) {
+          blockKeyframeAnimations(node, !!duration);
+        }
+      }
+
+      function closeAndReturnNoopAnimator() {
+        runner = new $$AnimateRunner({
+          end: endFn,
+          cancel: cancelFn
+        });
+
+        close();
+
+        return {
+          $$willAnimate: false,
+          start: function() {
+            return runner;
+          },
+          end: endFn
+        };
+      }
+
+      function start() {
+        if (animationClosed) return;
+
+        var startTime, events = [];
+
+        // even though we only pause keyframe animations here the pause flag
+        // will still happen when transitions are used. Only the transition will
+        // not be paused since that is not possible. If the animation ends when
+        // paused then it will not complete until unpaused or cancelled.
+        var playPause = function(playAnimation) {
+          if (!animationCompleted) {
+            animationPaused = !playAnimation;
+            if (timings.animationDuration) {
+              var value = blockKeyframeAnimations(node, animationPaused);
+              animationPaused
+                  ? temporaryStyles.push(value)
+                  : removeFromArray(temporaryStyles, value);
+            }
+          } else if (animationPaused && playAnimation) {
+            animationPaused = false;
+            close();
+          }
+        };
+
+        // checking the stagger duration prevents an accidently cascade of the CSS delay style
+        // being inherited from the parent. If the transition duration is zero then we can safely
+        // rely that the delay value is an intential stagger delay style.
+        var maxStagger = itemIndex > 0
+                         && ((timings.transitionDuration && stagger.transitionDuration === 0) ||
+                            (timings.animationDuration && stagger.animationDuration === 0))
+                         && Math.max(stagger.animationDelay, stagger.transitionDelay);
+        if (maxStagger) {
+          $timeout(triggerAnimationStart,
+                   Math.floor(maxStagger * itemIndex * ONE_SECOND),
+                   false);
+        } else {
+          triggerAnimationStart();
+        }
+
+        // this will decorate the existing promise runner with pause/resume methods
+        runnerHost.resume = function() {
+          playPause(true);
+        };
+
+        runnerHost.pause = function() {
+          playPause(false);
+        };
+
+        function triggerAnimationStart() {
+          // just incase a stagger animation kicks in when the animation
+          // itself was cancelled entirely
+          if (animationClosed) return;
+
+          applyBlocking(false);
+
+          forEach(temporaryStyles, function(entry) {
+            var key = entry[0];
+            var value = entry[1];
+            node.style[key] = value;
+          });
+
+          applyAnimationClasses(element, options);
+          $$jqLite.addClass(element, activeClasses);
+
+          if (flags.recalculateTimingStyles) {
+            fullClassName = node.className + ' ' + setupClasses;
+            cacheKey = gcsHashFn(node, fullClassName);
+
+            timings = computeTimings(node, fullClassName, cacheKey);
+            relativeDelay = timings.maxDelay;
+            maxDelay = Math.max(relativeDelay, 0);
+            maxDuration = timings.maxDuration;
+
+            if (maxDuration === 0) {
+              close();
+              return;
+            }
+
+            flags.hasTransitions = timings.transitionDuration > 0;
+            flags.hasAnimations = timings.animationDuration > 0;
+          }
+
+          if (flags.applyTransitionDelay || flags.applyAnimationDelay) {
+            relativeDelay = typeof options.delay !== "boolean" && truthyTimingValue(options.delay)
+                  ? parseFloat(options.delay)
+                  : relativeDelay;
+
+            maxDelay = Math.max(relativeDelay, 0);
+
+            var delayStyle;
+            if (flags.applyTransitionDelay) {
+              timings.transitionDelay = relativeDelay;
+              delayStyle = getCssDelayStyle(relativeDelay);
+              temporaryStyles.push(delayStyle);
+              node.style[delayStyle[0]] = delayStyle[1];
+            }
+
+            if (flags.applyAnimationDelay) {
+              timings.animationDelay = relativeDelay;
+              delayStyle = getCssDelayStyle(relativeDelay, true);
+              temporaryStyles.push(delayStyle);
+              node.style[delayStyle[0]] = delayStyle[1];
+            }
+          }
+
+          maxDelayTime = maxDelay * ONE_SECOND;
+          maxDurationTime = maxDuration * ONE_SECOND;
+
+          if (options.easing) {
+            var easeProp, easeVal = options.easing;
+            if (flags.hasTransitions) {
+              easeProp = TRANSITION_PROP + TIMING_KEY;
+              temporaryStyles.push([easeProp, easeVal]);
+              node.style[easeProp] = easeVal;
+            }
+            if (flags.hasAnimations) {
+              easeProp = ANIMATION_PROP + TIMING_KEY;
+              temporaryStyles.push([easeProp, easeVal]);
+              node.style[easeProp] = easeVal;
+            }
+          }
+
+          if (timings.transitionDuration) {
+            events.push(TRANSITIONEND_EVENT);
+          }
+
+          if (timings.animationDuration) {
+            events.push(ANIMATIONEND_EVENT);
+          }
+
+          startTime = Date.now();
+          element.on(events.join(' '), onAnimationProgress);
+          $timeout(onAnimationExpired, maxDelayTime + CLOSING_TIME_BUFFER * maxDurationTime);
+
+          applyAnimationToStyles(element, options);
+        }
+
+        function onAnimationExpired() {
+          // although an expired animation is a failed animation, getting to
+          // this outcome is very easy if the CSS code screws up. Therefore we
+          // should still continue normally as if the animation completed correctly.
+          close();
+        }
+
+        function onAnimationProgress(event) {
+          event.stopPropagation();
+          var ev = event.originalEvent || event;
+          var timeStamp = ev.$manualTimeStamp || ev.timeStamp || Date.now();
+
+          /* Firefox (or possibly just Gecko) likes to not round values up
+           * when a ms measurement is used for the animation */
+          var elapsedTime = parseFloat(ev.elapsedTime.toFixed(ELAPSED_TIME_MAX_DECIMAL_PLACES));
+
+          /* $manualTimeStamp is a mocked timeStamp value which is set
+           * within browserTrigger(). This is only here so that tests can
+           * mock animations properly. Real events fallback to event.timeStamp,
+           * or, if they don't, then a timeStamp is automatically created for them.
+           * We're checking to see if the timeStamp surpasses the expected delay,
+           * but we're using elapsedTime instead of the timeStamp on the 2nd
+           * pre-condition since animations sometimes close off early */
+          if (Math.max(timeStamp - startTime, 0) >= maxDelayTime && elapsedTime >= maxDuration) {
+            // we set this flag to ensure that if the transition is paused then, when resumed,
+            // the animation will automatically close itself since transitions cannot be paused.
+            animationCompleted = true;
+            close();
+          }
+        }
+      }
+    }
+  }];
+}];
+
+var $$AnimateCssDriverProvider = ['$$animationProvider', function($$animationProvider) {
+  $$animationProvider.drivers.push('$$animateCssDriver');
+
+  var NG_ANIMATE_SHIM_CLASS_NAME = 'ng-animate-shim';
+  var NG_ANIMATE_ANCHOR_CLASS_NAME = 'ng-anchor';
+
+  var NG_OUT_ANCHOR_CLASS_NAME = 'ng-anchor-out';
+  var NG_IN_ANCHOR_CLASS_NAME = 'ng-anchor-in';
+
+  this.$get = ['$animateCss', '$rootScope', '$$AnimateRunner', '$rootElement', '$document', '$sniffer',
+       function($animateCss,   $rootScope,   $$AnimateRunner,   $rootElement,   $document,   $sniffer) {
+
+    // only browsers that support these properties can render animations
+    if (!$sniffer.animations && !$sniffer.transitions) return noop;
+
+    var bodyNode = getDomNode($document).body;
+    var rootNode = getDomNode($rootElement);
+
+    var rootBodyElement = jqLite(bodyNode.parentNode === rootNode ? bodyNode : rootNode);
+
+    return function initDriverFn(animationDetails) {
+      return animationDetails.from && animationDetails.to
+          ? prepareFromToAnchorAnimation(animationDetails.from,
+                                         animationDetails.to,
+                                         animationDetails.classes,
+                                         animationDetails.anchors)
+          : prepareRegularAnimation(animationDetails);
+    };
+
+    function filterCssClasses(classes) {
+      //remove all the `ng-` stuff
+      return classes.replace(/\bng-\S+\b/g, '');
+    }
+
+    function getUniqueValues(a, b) {
+      if (isString(a)) a = a.split(' ');
+      if (isString(b)) b = b.split(' ');
+      return a.filter(function(val) {
+        return b.indexOf(val) === -1;
+      }).join(' ');
+    }
+
+    function prepareAnchoredAnimation(classes, outAnchor, inAnchor) {
+      var clone = jqLite(getDomNode(outAnchor).cloneNode(true));
+      var startingClasses = filterCssClasses(getClassVal(clone));
+
+      outAnchor.addClass(NG_ANIMATE_SHIM_CLASS_NAME);
+      inAnchor.addClass(NG_ANIMATE_SHIM_CLASS_NAME);
+
+      clone.addClass(NG_ANIMATE_ANCHOR_CLASS_NAME);
+
+      rootBodyElement.append(clone);
+
+      var animatorIn, animatorOut = prepareOutAnimation();
+
+      // the user may not end up using the `out` animation and
+      // only making use of the `in` animation or vice-versa.
+      // In either case we should allow this and not assume the
+      // animation is over unless both animations are not used.
+      if (!animatorOut) {
+        animatorIn = prepareInAnimation();
+        if (!animatorIn) {
+          return end();
+        }
+      }
+
+      var startingAnimator = animatorOut || animatorIn;
+
+      return {
+        start: function() {
+          var runner;
+
+          var currentAnimation = startingAnimator.start();
+          currentAnimation.done(function() {
+            currentAnimation = null;
+            if (!animatorIn) {
+              animatorIn = prepareInAnimation();
+              if (animatorIn) {
+                currentAnimation = animatorIn.start();
+                currentAnimation.done(function() {
+                  currentAnimation = null;
+                  end();
+                  runner.complete();
+                });
+                return currentAnimation;
+              }
+            }
+            // in the event that there is no `in` animation
+            end();
+            runner.complete();
+          });
+
+          runner = new $$AnimateRunner({
+            end: endFn,
+            cancel: endFn
+          });
+
+          return runner;
+
+          function endFn() {
+            if (currentAnimation) {
+              currentAnimation.end();
+            }
+          }
+        }
+      };
+
+      function calculateAnchorStyles(anchor) {
+        var styles = {};
+
+        var coords = getDomNode(anchor).getBoundingClientRect();
+
+        // we iterate directly since safari messes up and doesn't return
+        // all the keys for the coods object when iterated
+        forEach(['width','height','top','left'], function(key) {
+          var value = coords[key];
+          switch (key) {
+            case 'top':
+              value += bodyNode.scrollTop;
+              break;
+            case 'left':
+              value += bodyNode.scrollLeft;
+              break;
+          }
+          styles[key] = Math.floor(value) + 'px';
+        });
+        return styles;
+      }
+
+      function prepareOutAnimation() {
+        var animator = $animateCss(clone, {
+          addClass: NG_OUT_ANCHOR_CLASS_NAME,
+          delay: true,
+          from: calculateAnchorStyles(outAnchor)
+        });
+
+        // read the comment within `prepareRegularAnimation` to understand
+        // why this check is necessary
+        return animator.$$willAnimate ? animator : null;
+      }
+
+      function getClassVal(element) {
+        return element.attr('class') || '';
+      }
+
+      function prepareInAnimation() {
+        var endingClasses = filterCssClasses(getClassVal(inAnchor));
+        var toAdd = getUniqueValues(endingClasses, startingClasses);
+        var toRemove = getUniqueValues(startingClasses, endingClasses);
+
+        var animator = $animateCss(clone, {
+          to: calculateAnchorStyles(inAnchor),
+          addClass: NG_IN_ANCHOR_CLASS_NAME + ' ' + toAdd,
+          removeClass: NG_OUT_ANCHOR_CLASS_NAME + ' ' + toRemove,
+          delay: true
+        });
+
+        // read the comment within `prepareRegularAnimation` to understand
+        // why this check is necessary
+        return animator.$$willAnimate ? animator : null;
+      }
+
+      function end() {
+        clone.remove();
+        outAnchor.removeClass(NG_ANIMATE_SHIM_CLASS_NAME);
+        inAnchor.removeClass(NG_ANIMATE_SHIM_CLASS_NAME);
+      }
+    }
+
+    function prepareFromToAnchorAnimation(from, to, classes, anchors) {
+      var fromAnimation = prepareRegularAnimation(from);
+      var toAnimation = prepareRegularAnimation(to);
+
+      var anchorAnimations = [];
+      forEach(anchors, function(anchor) {
+        var outElement = anchor['out'];
+        var inElement = anchor['in'];
+        var animator = prepareAnchoredAnimation(classes, outElement, inElement);
+        if (animator) {
+          anchorAnimations.push(animator);
+        }
+      });
+
+      // no point in doing anything when there are no elements to animate
+      if (!fromAnimation && !toAnimation && anchorAnimations.length === 0) return;
+
+      return {
+        start: function() {
+          var animationRunners = [];
+
+          if (fromAnimation) {
+            animationRunners.push(fromAnimation.start());
+          }
+
+          if (toAnimation) {
+            animationRunners.push(toAnimation.start());
+          }
+
+          forEach(anchorAnimations, function(animation) {
+            animationRunners.push(animation.start());
+          });
+
+          var runner = new $$AnimateRunner({
+            end: endFn,
+            cancel: endFn // CSS-driven animations cannot be cancelled, only ended
+          });
+
+          $$AnimateRunner.all(animationRunners, function(status) {
+            runner.complete(status);
+          });
+
+          return runner;
+
+          function endFn() {
+            forEach(animationRunners, function(runner) {
+              runner.end();
+            });
+          }
+        }
+      };
+    }
+
+    function prepareRegularAnimation(animationDetails) {
+      var element = animationDetails.element;
+      var options = animationDetails.options || {};
+
+      if (animationDetails.structural) {
+        // structural animations ensure that the CSS classes are always applied
+        // before the detection starts.
+        options.structural = options.applyClassesEarly = true;
+
+        // we special case the leave animation since we want to ensure that
+        // the element is removed as soon as the animation is over. Otherwise
+        // a flicker might appear or the element may not be removed at all
+        options.event = animationDetails.event;
+        if (options.event === 'leave') {
+          options.onDone = options.domOperation;
+        }
+      } else {
+        options.event = null;
+      }
+
+      var animator = $animateCss(element, options);
+
+      // the driver lookup code inside of $$animation attempts to spawn a
+      // driver one by one until a driver returns a.$$willAnimate animator object.
+      // $animateCss will always return an object, however, it will pass in
+      // a flag as a hint as to whether an animation was detected or not
+      return animator.$$willAnimate ? animator : null;
+    }
+  }];
+}];
+
+// TODO(matsko): use caching here to speed things up for detection
+// TODO(matsko): add documentation
+//  by the time...
+
+var $$AnimateJsProvider = ['$animateProvider', function($animateProvider) {
+  this.$get = ['$injector', '$$AnimateRunner', '$$rAFMutex', '$$jqLite',
+       function($injector,   $$AnimateRunner,   $$rAFMutex,   $$jqLite) {
+
+    var applyAnimationClasses = applyAnimationClassesFactory($$jqLite);
+         // $animateJs(element, 'enter');
+    return function(element, event, classes, options) {
+      // the `classes` argument is optional and if it is not used
+      // then the classes will be resolved from the element's className
+      // property as well as options.addClass/options.removeClass.
+      if (arguments.length === 3 && isObject(classes)) {
+        options = classes;
+        classes = null;
+      }
+
+      options = prepareAnimationOptions(options);
+      if (!classes) {
+        classes = element.attr('class') || '';
+        if (options.addClass) {
+          classes += ' ' + options.addClass;
+        }
+        if (options.removeClass) {
+          classes += ' ' + options.removeClass;
+        }
+      }
+
+      var classesToAdd = options.addClass;
+      var classesToRemove = options.removeClass;
+
+      // the lookupAnimations function returns a series of animation objects that are
+      // matched up with one or more of the CSS classes. These animation objects are
+      // defined via the module.animation factory function. If nothing is detected then
+      // we don't return anything which then makes $animation query the next driver.
+      var animations = lookupAnimations(classes);
+      var before, after;
+      if (animations.length) {
+        var afterFn, beforeFn;
+        if (event == 'leave') {
+          beforeFn = 'leave';
+          afterFn = 'afterLeave'; // TODO(matsko): get rid of this
+        } else {
+          beforeFn = 'before' + event.charAt(0).toUpperCase() + event.substr(1);
+          afterFn = event;
+        }
+
+        if (event !== 'enter' && event !== 'move') {
+          before = packageAnimations(element, event, options, animations, beforeFn);
+        }
+        after  = packageAnimations(element, event, options, animations, afterFn);
+      }
+
+      // no matching animations
+      if (!before && !after) return;
+
+      function applyOptions() {
+        options.domOperation();
+        applyAnimationClasses(element, options);
+      }
+
+      return {
+        start: function() {
+          var closeActiveAnimations;
+          var chain = [];
+
+          if (before) {
+            chain.push(function(fn) {
+              closeActiveAnimations = before(fn);
+            });
+          }
+
+          if (chain.length) {
+            chain.push(function(fn) {
+              applyOptions();
+              fn(true);
+            });
+          } else {
+            applyOptions();
+          }
+
+          if (after) {
+            chain.push(function(fn) {
+              closeActiveAnimations = after(fn);
+            });
+          }
+
+          var animationClosed = false;
+          var runner = new $$AnimateRunner({
+            end: function() {
+              endAnimations();
+            },
+            cancel: function() {
+              endAnimations(true);
+            }
+          });
+
+          $$AnimateRunner.chain(chain, onComplete);
+          return runner;
+
+          function onComplete(success) {
+            animationClosed = true;
+            applyOptions();
+            applyAnimationStyles(element, options);
+            runner.complete(success);
+          }
+
+          function endAnimations(cancelled) {
+            if (!animationClosed) {
+              (closeActiveAnimations || noop)(cancelled);
+              onComplete(cancelled);
+            }
+          }
+        }
+      };
+
+      function executeAnimationFn(fn, element, event, options, onDone) {
+        var args;
+        switch (event) {
+          case 'animate':
+            args = [element, options.from, options.to, onDone];
+            break;
+
+          case 'setClass':
+            args = [element, classesToAdd, classesToRemove, onDone];
+            break;
+
+          case 'addClass':
+            args = [element, classesToAdd, onDone];
+            break;
+
+          case 'removeClass':
+            args = [element, classesToRemove, onDone];
+            break;
+
+          default:
+            args = [element, onDone];
+            break;
+        }
+
+        args.push(options);
+
+        var value = fn.apply(fn, args);
+        if (value) {
+          if (isFunction(value.start)) {
+            value = value.start();
+          }
+
+          if (value instanceof $$AnimateRunner) {
+            value.done(onDone);
+          } else if (isFunction(value)) {
+            // optional onEnd / onCancel callback
+            return value;
+          }
+        }
+
+        return noop;
+      }
+
+      function groupEventedAnimations(element, event, options, animations, fnName) {
+        var operations = [];
+        forEach(animations, function(ani) {
+          var animation = ani[fnName];
+          if (!animation) return;
+
+          // note that all of these animations will run in parallel
+          operations.push(function() {
+            var runner;
+            var endProgressCb;
+
+            var resolved = false;
+            var onAnimationComplete = function(rejected) {
+              if (!resolved) {
+                resolved = true;
+                (endProgressCb || noop)(rejected);
+                runner.complete(!rejected);
+              }
+            };
+
+            runner = new $$AnimateRunner({
+              end: function() {
+                onAnimationComplete();
+              },
+              cancel: function() {
+                onAnimationComplete(true);
+              }
+            });
+
+            endProgressCb = executeAnimationFn(animation, element, event, options, function(result) {
+              var cancelled = result === false;
+              onAnimationComplete(cancelled);
+            });
+
+            return runner;
+          });
+        });
+
+        return operations;
+      }
+
+      function packageAnimations(element, event, options, animations, fnName) {
+        var operations = groupEventedAnimations(element, event, options, animations, fnName);
+        if (operations.length === 0) {
+          var a,b;
+          if (fnName === 'beforeSetClass') {
+            a = groupEventedAnimations(element, 'removeClass', options, animations, 'beforeRemoveClass');
+            b = groupEventedAnimations(element, 'addClass', options, animations, 'beforeAddClass');
+          } else if (fnName === 'setClass') {
+            a = groupEventedAnimations(element, 'removeClass', options, animations, 'removeClass');
+            b = groupEventedAnimations(element, 'addClass', options, animations, 'addClass');
+          }
+
+          if (a) {
+            operations = operations.concat(a);
+          }
+          if (b) {
+            operations = operations.concat(b);
+          }
+        }
+
+        if (operations.length === 0) return;
+
+        // TODO(matsko): add documentation
+        return function startAnimation(callback) {
+          var runners = [];
+          if (operations.length) {
+            forEach(operations, function(animateFn) {
+              runners.push(animateFn());
+            });
+          }
+
+          runners.length ? $$AnimateRunner.all(runners, callback) : callback();
+
+          return function endFn(reject) {
+            forEach(runners, function(runner) {
+              reject ? runner.cancel() : runner.end();
+            });
+          };
+        };
+      }
+    };
+
+    function lookupAnimations(classes) {
+      classes = isArray(classes) ? classes : classes.split(' ');
+      var matches = [], flagMap = {};
+      for (var i=0; i < classes.length; i++) {
+        var klass = classes[i],
+            animationFactory = $animateProvider.$$registeredAnimations[klass];
+        if (animationFactory && !flagMap[klass]) {
+          matches.push($injector.get(animationFactory));
+          flagMap[klass] = true;
+        }
+      }
+      return matches;
+    }
+  }];
+}];
+
+var $$AnimateJsDriverProvider = ['$$animationProvider', function($$animationProvider) {
+  $$animationProvider.drivers.push('$$animateJsDriver');
+  this.$get = ['$$animateJs', '$$AnimateRunner', function($$animateJs, $$AnimateRunner) {
+    return function initDriverFn(animationDetails) {
+      if (animationDetails.from && animationDetails.to) {
+        var fromAnimation = prepareAnimation(animationDetails.from);
+        var toAnimation = prepareAnimation(animationDetails.to);
+        if (!fromAnimation && !toAnimation) return;
+
+        return {
+          start: function() {
+            var animationRunners = [];
+
+            if (fromAnimation) {
+              animationRunners.push(fromAnimation.start());
+            }
+
+            if (toAnimation) {
+              animationRunners.push(toAnimation.start());
+            }
+
+            $$AnimateRunner.all(animationRunners, done);
+
+            var runner = new $$AnimateRunner({
+              end: endFnFactory(),
+              cancel: endFnFactory()
+            });
+
+            return runner;
+
+            function endFnFactory() {
+              return function() {
+                forEach(animationRunners, function(runner) {
+                  // at this point we cannot cancel animations for groups just yet. 1.5+
+                  runner.end();
+                });
+              };
+            }
+
+            function done(status) {
+              runner.complete(status);
+            }
+          }
+        };
+      } else {
+        return prepareAnimation(animationDetails);
+      }
+    };
+
+    function prepareAnimation(animationDetails) {
+      // TODO(matsko): make sure to check for grouped animations and delegate down to normal animations
+      var element = animationDetails.element;
+      var event = animationDetails.event;
+      var options = animationDetails.options;
+      var classes = animationDetails.classes;
+      return $$animateJs(element, event, classes, options);
+    }
+  }];
+}];
+
+var NG_ANIMATE_ATTR_NAME = 'data-ng-animate';
+var NG_ANIMATE_PIN_DATA = '$ngAnimatePin';
+var $$AnimateQueueProvider = ['$animateProvider', function($animateProvider) {
+  var PRE_DIGEST_STATE = 1;
+  var RUNNING_STATE = 2;
+
+  var rules = this.rules = {
+    skip: [],
+    cancel: [],
+    join: []
+  };
+
+  function isAllowed(ruleType, element, currentAnimation, previousAnimation) {
+    return rules[ruleType].some(function(fn) {
+      return fn(element, currentAnimation, previousAnimation);
+    });
+  }
+
+  function hasAnimationClasses(options, and) {
+    options = options || {};
+    var a = (options.addClass || '').length > 0;
+    var b = (options.removeClass || '').length > 0;
+    return and ? a && b : a || b;
+  }
+
+  rules.join.push(function(element, newAnimation, currentAnimation) {
+    // if the new animation is class-based then we can just tack that on
+    return !newAnimation.structural && hasAnimationClasses(newAnimation.options);
+  });
+
+  rules.skip.push(function(element, newAnimation, currentAnimation) {
+    // there is no need to animate anything if no classes are being added and
+    // there is no structural animation that will be triggered
+    return !newAnimation.structural && !hasAnimationClasses(newAnimation.options);
+  });
+
+  rules.skip.push(function(element, newAnimation, currentAnimation) {
+    // why should we trigger a new structural animation if the element will
+    // be removed from the DOM anyway?
+    return currentAnimation.event == 'leave' && newAnimation.structural;
+  });
+
+  rules.skip.push(function(element, newAnimation, currentAnimation) {
+    // if there is a current animation then skip the class-based animation
+    return currentAnimation.structural && !newAnimation.structural;
+  });
+
+  rules.cancel.push(function(element, newAnimation, currentAnimation) {
+    // there can never be two structural animations running at the same time
+    return currentAnimation.structural && newAnimation.structural;
+  });
+
+  rules.cancel.push(function(element, newAnimation, currentAnimation) {
+    // if the previous animation is already running, but the new animation will
+    // be triggered, but the new animation is structural
+    return currentAnimation.state === RUNNING_STATE && newAnimation.structural;
+  });
+
+  rules.cancel.push(function(element, newAnimation, currentAnimation) {
+    var nO = newAnimation.options;
+    var cO = currentAnimation.options;
+
+    // if the exact same CSS class is added/removed then it's safe to cancel it
+    return (nO.addClass && nO.addClass === cO.removeClass) || (nO.removeClass && nO.removeClass === cO.addClass);
+  });
+
+  this.$get = ['$$rAF', '$rootScope', '$rootElement', '$document', '$$HashMap',
+               '$$animation', '$$AnimateRunner', '$templateRequest', '$$jqLite',
+       function($$rAF,   $rootScope,   $rootElement,   $document,   $$HashMap,
+                $$animation,   $$AnimateRunner,   $templateRequest,   $$jqLite) {
+
+    var activeAnimationsLookup = new $$HashMap();
+    var disabledElementsLookup = new $$HashMap();
+
+    var animationsEnabled = null;
+
+    // Wait until all directive and route-related templates are downloaded and
+    // compiled. The $templateRequest.totalPendingRequests variable keeps track of
+    // all of the remote templates being currently downloaded. If there are no
+    // templates currently downloading then the watcher will still fire anyway.
+    var deregisterWatch = $rootScope.$watch(
+      function() { return $templateRequest.totalPendingRequests === 0; },
+      function(isEmpty) {
+        if (!isEmpty) return;
+        deregisterWatch();
+
+        // Now that all templates have been downloaded, $animate will wait until
+        // the post digest queue is empty before enabling animations. By having two
+        // calls to $postDigest calls we can ensure that the flag is enabled at the
+        // very end of the post digest queue. Since all of the animations in $animate
+        // use $postDigest, it's important that the code below executes at the end.
+        // This basically means that the page is fully downloaded and compiled before
+        // any animations are triggered.
+        $rootScope.$$postDigest(function() {
+          $rootScope.$$postDigest(function() {
+            // we check for null directly in the event that the application already called
+            // .enabled() with whatever arguments that it provided it with
+            if (animationsEnabled === null) {
+              animationsEnabled = true;
+            }
+          });
+        });
+      }
+    );
+
+    var bodyElement = jqLite($document[0].body);
+
+    var callbackRegistry = {};
+
+    // remember that the classNameFilter is set during the provider/config
+    // stage therefore we can optimize here and setup a helper function
+    var classNameFilter = $animateProvider.classNameFilter();
+    var isAnimatableClassName = !classNameFilter
+              ? function() { return true; }
+              : function(className) {
+                return classNameFilter.test(className);
+              };
+
+    var applyAnimationClasses = applyAnimationClassesFactory($$jqLite);
+
+    function normalizeAnimationOptions(element, options) {
+      return mergeAnimationOptions(element, options, {});
+    }
+
+    function findCallbacks(element, event) {
+      var targetNode = getDomNode(element);
+
+      var matches = [];
+      var entries = callbackRegistry[event];
+      if (entries) {
+        forEach(entries, function(entry) {
+          if (entry.node.contains(targetNode)) {
+            matches.push(entry.callback);
+          }
+        });
+      }
+
+      return matches;
+    }
+
+    function triggerCallback(event, element, phase, data) {
+      $$rAF(function() {
+        forEach(findCallbacks(element, event), function(callback) {
+          callback(element, phase, data);
+        });
+      });
+    }
+
+    return {
+      on: function(event, container, callback) {
+        var node = extractElementNode(container);
+        callbackRegistry[event] = callbackRegistry[event] || [];
+        callbackRegistry[event].push({
+          node: node,
+          callback: callback
+        });
+      },
+
+      off: function(event, container, callback) {
+        var entries = callbackRegistry[event];
+        if (!entries) return;
+
+        callbackRegistry[event] = arguments.length === 1
+            ? null
+            : filterFromRegistry(entries, container, callback);
+
+        function filterFromRegistry(list, matchContainer, matchCallback) {
+          var containerNode = extractElementNode(matchContainer);
+          return list.filter(function(entry) {
+            var isMatch = entry.node === containerNode &&
+                            (!matchCallback || entry.callback === matchCallback);
+            return !isMatch;
+          });
+        }
+      },
+
+      pin: function(element, parentElement) {
+        assertArg(isElement(element), 'element', 'not an element');
+        assertArg(isElement(parentElement), 'parentElement', 'not an element');
+        element.data(NG_ANIMATE_PIN_DATA, parentElement);
+      },
+
+      push: function(element, event, options, domOperation) {
+        options = options || {};
+        options.domOperation = domOperation;
+        return queueAnimation(element, event, options);
+      },
+
+      // this method has four signatures:
+      //  () - global getter
+      //  (bool) - global setter
+      //  (element) - element getter
+      //  (element, bool) - element setter<F37>
+      enabled: function(element, bool) {
+        var argCount = arguments.length;
+
+        if (argCount === 0) {
+          // () - Global getter
+          bool = !!animationsEnabled;
+        } else {
+          var hasElement = isElement(element);
+
+          if (!hasElement) {
+            // (bool) - Global setter
+            bool = animationsEnabled = !!element;
+          } else {
+            var node = getDomNode(element);
+            var recordExists = disabledElementsLookup.get(node);
+
+            if (argCount === 1) {
+              // (element) - Element getter
+              bool = !recordExists;
+            } else {
+              // (element, bool) - Element setter
+              bool = !!bool;
+              if (!bool) {
+                disabledElementsLookup.put(node, true);
+              } else if (recordExists) {
+                disabledElementsLookup.remove(node);
+              }
+            }
+          }
+        }
+
+        return bool;
+      }
+    };
+
+    function queueAnimation(element, event, options) {
+      var node, parent;
+      element = stripCommentsFromElement(element);
+      if (element) {
+        node = getDomNode(element);
+        parent = element.parent();
+      }
+
+      options = prepareAnimationOptions(options);
+
+      // we create a fake runner with a working promise.
+      // These methods will become available after the digest has passed
+      var runner = new $$AnimateRunner();
+
+      // there are situations where a directive issues an animation for
+      // a jqLite wrapper that contains only comment nodes... If this
+      // happens then there is no way we can perform an animation
+      if (!node) {
+        close();
+        return runner;
+      }
+
+      if (isArray(options.addClass)) {
+        options.addClass = options.addClass.join(' ');
+      }
+
+      if (isArray(options.removeClass)) {
+        options.removeClass = options.removeClass.join(' ');
+      }
+
+      if (options.from && !isObject(options.from)) {
+        options.from = null;
+      }
+
+      if (options.to && !isObject(options.to)) {
+        options.to = null;
+      }
+
+      var className = [node.className, options.addClass, options.removeClass].join(' ');
+      if (!isAnimatableClassName(className)) {
+        close();
+        return runner;
+      }
+
+      var isStructural = ['enter', 'move', 'leave'].indexOf(event) >= 0;
+
+      // this is a hard disable of all animations for the application or on
+      // the element itself, therefore  there is no need to continue further
+      // past this point if not enabled
+      var skipAnimations = !animationsEnabled || disabledElementsLookup.get(node);
+      var existingAnimation = (!skipAnimations && activeAnimationsLookup.get(node)) || {};
+      var hasExistingAnimation = !!existingAnimation.state;
+
+      // there is no point in traversing the same collection of parent ancestors if a followup
+      // animation will be run on the same element that already did all that checking work
+      if (!skipAnimations && (!hasExistingAnimation || existingAnimation.state != PRE_DIGEST_STATE)) {
+        skipAnimations = !areAnimationsAllowed(element, parent, event);
+      }
+
+      if (skipAnimations) {
+        close();
+        return runner;
+      }
+
+      if (isStructural) {
+        closeChildAnimations(element);
+      }
+
+      var newAnimation = {
+        structural: isStructural,
+        element: element,
+        event: event,
+        close: close,
+        options: options,
+        runner: runner
+      };
+
+      if (hasExistingAnimation) {
+        var skipAnimationFlag = isAllowed('skip', element, newAnimation, existingAnimation);
+        if (skipAnimationFlag) {
+          if (existingAnimation.state === RUNNING_STATE) {
+            close();
+            return runner;
+          } else {
+            mergeAnimationOptions(element, existingAnimation.options, options);
+            return existingAnimation.runner;
+          }
+        }
+
+        var cancelAnimationFlag = isAllowed('cancel', element, newAnimation, existingAnimation);
+        if (cancelAnimationFlag) {
+          if (existingAnimation.state === RUNNING_STATE) {
+            // this will end the animation right away and it is safe
+            // to do so since the animation is already running and the
+            // runner callback code will run in async
+            existingAnimation.runner.end();
+          } else if (existingAnimation.structural) {
+            // this means that the animation is queued into a digest, but
+            // hasn't started yet. Therefore it is safe to run the close
+            // method which will call the runner methods in async.
+            existingAnimation.close();
+          } else {
+            // this will merge the existing animation options into this new follow-up animation
+            mergeAnimationOptions(element, newAnimation.options, existingAnimation.options);
+          }
+        } else {
+          // a joined animation means that this animation will take over the existing one
+          // so an example would involve a leave animation taking over an enter. Then when
+          // the postDigest kicks in the enter will be ignored.
+          var joinAnimationFlag = isAllowed('join', element, newAnimation, existingAnimation);
+          if (joinAnimationFlag) {
+            if (existingAnimation.state === RUNNING_STATE) {
+              normalizeAnimationOptions(element, options);
+            } else {
+              event = newAnimation.event = existingAnimation.event;
+              options = mergeAnimationOptions(element, existingAnimation.options, newAnimation.options);
+              return runner;
+            }
+          }
+        }
+      } else {
+        // normalization in this case means that it removes redundant CSS classes that
+        // already exist (addClass) or do not exist (removeClass) on the element
+        normalizeAnimationOptions(element, options);
+      }
+
+      // when the options are merged and cleaned up we may end up not having to do
+      // an animation at all, therefore we should check this before issuing a post
+      // digest callback. Structural animations will always run no matter what.
+      var isValidAnimation = newAnimation.structural;
+      if (!isValidAnimation) {
+        // animate (from/to) can be quickly checked first, otherwise we check if any classes are present
+        isValidAnimation = (newAnimation.event === 'animate' && Object.keys(newAnimation.options.to || {}).length > 0)
+                            || hasAnimationClasses(newAnimation.options);
+      }
+
+      if (!isValidAnimation) {
+        close();
+        clearElementAnimationState(element);
+        return runner;
+      }
+
+      if (isStructural) {
+        closeParentClassBasedAnimations(parent);
+      }
+
+      // the counter keeps track of cancelled animations
+      var counter = (existingAnimation.counter || 0) + 1;
+      newAnimation.counter = counter;
+
+      markElementAnimationState(element, PRE_DIGEST_STATE, newAnimation);
+
+      $rootScope.$$postDigest(function() {
+        var animationDetails = activeAnimationsLookup.get(node);
+        var animationCancelled = !animationDetails;
+        animationDetails = animationDetails || {};
+
+        // if addClass/removeClass is called before something like enter then the
+        // registered parent element may not be present. The code below will ensure
+        // that a final value for parent element is obtained
+        var parentElement = element.parent() || [];
+
+        // animate/structural/class-based animations all have requirements. Otherwise there
+        // is no point in performing an animation. The parent node must also be set.
+        var isValidAnimation = parentElement.length > 0
+                                && (animationDetails.event === 'animate'
+                                    || animationDetails.structural
+                                    || hasAnimationClasses(animationDetails.options));
+
+        // this means that the previous animation was cancelled
+        // even if the follow-up animation is the same event
+        if (animationCancelled || animationDetails.counter !== counter || !isValidAnimation) {
+          // if another animation did not take over then we need
+          // to make sure that the domOperation and options are
+          // handled accordingly
+          if (animationCancelled) {
+            applyAnimationClasses(element, options);
+            applyAnimationStyles(element, options);
+          }
+
+          // if the event changed from something like enter to leave then we do
+          // it, otherwise if it's the same then the end result will be the same too
+          if (animationCancelled || (isStructural && animationDetails.event !== event)) {
+            options.domOperation();
+            runner.end();
+          }
+
+          // in the event that the element animation was not cancelled or a follow-up animation
+          // isn't allowed to animate from here then we need to clear the state of the element
+          // so that any future animations won't read the expired animation data.
+          if (!isValidAnimation) {
+            clearElementAnimationState(element);
+          }
+
+          return;
+        }
+
+        // this combined multiple class to addClass / removeClass into a setClass event
+        // so long as a structural event did not take over the animation
+        event = !animationDetails.structural && hasAnimationClasses(animationDetails.options, true)
+            ? 'setClass'
+            : animationDetails.event;
+
+        if (animationDetails.structural) {
+          closeParentClassBasedAnimations(parentElement);
+        }
+
+        markElementAnimationState(element, RUNNING_STATE);
+        var realRunner = $$animation(element, event, animationDetails.options);
+        realRunner.done(function(status) {
+          close(!status);
+          var animationDetails = activeAnimationsLookup.get(node);
+          if (animationDetails && animationDetails.counter === counter) {
+            clearElementAnimationState(getDomNode(element));
+          }
+          notifyProgress(runner, event, 'close', {});
+        });
+
+        // this will update the runner's flow-control events based on
+        // the `realRunner` object.
+        runner.setHost(realRunner);
+        notifyProgress(runner, event, 'start', {});
+      });
+
+      return runner;
+
+      function notifyProgress(runner, event, phase, data) {
+        triggerCallback(event, element, phase, data);
+        runner.progress(event, phase, data);
+      }
+
+      function close(reject) { // jshint ignore:line
+        applyAnimationClasses(element, options);
+        applyAnimationStyles(element, options);
+        options.domOperation();
+        runner.complete(!reject);
+      }
+    }
+
+    function closeChildAnimations(element) {
+      var node = getDomNode(element);
+      var children = node.querySelectorAll('[' + NG_ANIMATE_ATTR_NAME + ']');
+      forEach(children, function(child) {
+        var state = parseInt(child.getAttribute(NG_ANIMATE_ATTR_NAME));
+        var animationDetails = activeAnimationsLookup.get(child);
+        switch (state) {
+          case RUNNING_STATE:
+            animationDetails.runner.end();
+            /* falls through */
+          case PRE_DIGEST_STATE:
+            if (animationDetails) {
+              activeAnimationsLookup.remove(child);
+            }
+            break;
+        }
+      });
+    }
+
+    function clearElementAnimationState(element) {
+      var node = getDomNode(element);
+      node.removeAttribute(NG_ANIMATE_ATTR_NAME);
+      activeAnimationsLookup.remove(node);
+    }
+
+    function isMatchingElement(nodeOrElmA, nodeOrElmB) {
+      return getDomNode(nodeOrElmA) === getDomNode(nodeOrElmB);
+    }
+
+    function closeParentClassBasedAnimations(startingElement) {
+      var parentNode = getDomNode(startingElement);
+      do {
+        if (!parentNode || parentNode.nodeType !== ELEMENT_NODE) break;
+
+        var animationDetails = activeAnimationsLookup.get(parentNode);
+        if (animationDetails) {
+          examineParentAnimation(parentNode, animationDetails);
+        }
+
+        parentNode = parentNode.parentNode;
+      } while (true);
+
+      // since animations are detected from CSS classes, we need to flush all parent
+      // class-based animations so that the parent classes are all present for child
+      // animations to properly function (otherwise any CSS selectors may not work)
+      function examineParentAnimation(node, animationDetails) {
+        // enter/leave/move always have priority
+        if (animationDetails.structural || !hasAnimationClasses(animationDetails.options)) return;
+
+        if (animationDetails.state === RUNNING_STATE) {
+          animationDetails.runner.end();
+        }
+        clearElementAnimationState(node);
+      }
+    }
+
+    function areAnimationsAllowed(element, parentElement, event) {
+      var bodyElementDetected = false;
+      var rootElementDetected = false;
+      var parentAnimationDetected = false;
+      var animateChildren;
+
+      var parentHost = element.data(NG_ANIMATE_PIN_DATA);
+      if (parentHost) {
+        parentElement = parentHost;
+      }
+
+      while (parentElement && parentElement.length) {
+        if (!rootElementDetected) {
+          // angular doesn't want to attempt to animate elements outside of the application
+          // therefore we need to ensure that the rootElement is an ancestor of the current element
+          rootElementDetected = isMatchingElement(parentElement, $rootElement);
+        }
+
+        var parentNode = parentElement[0];
+        if (parentNode.nodeType !== ELEMENT_NODE) {
+          // no point in inspecting the #document element
+          break;
+        }
+
+        var details = activeAnimationsLookup.get(parentNode) || {};
+        // either an enter, leave or move animation will commence
+        // therefore we can't allow any animations to take place
+        // but if a parent animation is class-based then that's ok
+        if (!parentAnimationDetected) {
+          parentAnimationDetected = details.structural || disabledElementsLookup.get(parentNode);
+        }
+
+        if (isUndefined(animateChildren) || animateChildren === true) {
+          var value = parentElement.data(NG_ANIMATE_CHILDREN_DATA);
+          if (isDefined(value)) {
+            animateChildren = value;
+          }
+        }
+
+        // there is no need to continue traversing at this point
+        if (parentAnimationDetected && animateChildren === false) break;
+
+        if (!rootElementDetected) {
+          // angular doesn't want to attempt to animate elements outside of the application
+          // therefore we need to ensure that the rootElement is an ancestor of the current element
+          rootElementDetected = isMatchingElement(parentElement, $rootElement);
+          if (!rootElementDetected) {
+            parentHost = parentElement.data(NG_ANIMATE_PIN_DATA);
+            if (parentHost) {
+              parentElement = parentHost;
+            }
+          }
+        }
+
+        if (!bodyElementDetected) {
+          // we also need to ensure that the element is or will be apart of the body element
+          // otherwise it is pointless to even issue an animation to be rendered
+          bodyElementDetected = isMatchingElement(parentElement, bodyElement);
+        }
+
+        parentElement = parentElement.parent();
+      }
+
+      var allowAnimation = !parentAnimationDetected || animateChildren;
+      return allowAnimation && rootElementDetected && bodyElementDetected;
+    }
+
+    function markElementAnimationState(element, state, details) {
+      details = details || {};
+      details.state = state;
+
+      var node = getDomNode(element);
+      node.setAttribute(NG_ANIMATE_ATTR_NAME, state);
+
+      var oldValue = activeAnimationsLookup.get(node);
+      var newValue = oldValue
+          ? extend(oldValue, details)
+          : details;
+      activeAnimationsLookup.put(node, newValue);
+    }
+  }];
+}];
+
+var $$rAFMutexFactory = ['$$rAF', function($$rAF) {
+  return function() {
+    var passed = false;
+    $$rAF(function() {
+      passed = true;
+    });
+    return function(fn) {
+      passed ? fn() : $$rAF(fn);
+    };
+  };
+}];
+
+var $$AnimateRunnerFactory = ['$q', '$$rAFMutex', function($q, $$rAFMutex) {
+  var INITIAL_STATE = 0;
+  var DONE_PENDING_STATE = 1;
+  var DONE_COMPLETE_STATE = 2;
+
+  AnimateRunner.chain = function(chain, callback) {
+    var index = 0;
+
+    next();
+    function next() {
+      if (index === chain.length) {
+        callback(true);
+        return;
+      }
+
+      chain[index](function(response) {
+        if (response === false) {
+          callback(false);
+          return;
+        }
+        index++;
+        next();
+      });
+    }
+  };
+
+  AnimateRunner.all = function(runners, callback) {
+    var count = 0;
+    var status = true;
+    forEach(runners, function(runner) {
+      runner.done(onProgress);
+    });
+
+    function onProgress(response) {
+      status = status && response;
+      if (++count === runners.length) {
+        callback(status);
+      }
+    }
+  };
+
+  function AnimateRunner(host) {
+    this.setHost(host);
+
+    this._doneCallbacks = [];
+    this._runInAnimationFrame = $$rAFMutex();
+    this._state = 0;
+  }
+
+  AnimateRunner.prototype = {
+    setHost: function(host) {
+      this.host = host || {};
+    },
+
+    done: function(fn) {
+      if (this._state === DONE_COMPLETE_STATE) {
+        fn();
+      } else {
+        this._doneCallbacks.push(fn);
+      }
+    },
+
+    progress: noop,
+
+    getPromise: function() {
+      if (!this.promise) {
+        var self = this;
+        this.promise = $q(function(resolve, reject) {
+          self.done(function(status) {
+            status === false ? reject() : resolve();
+          });
+        });
+      }
+      return this.promise;
+    },
+
+    then: function(resolveHandler, rejectHandler) {
+      return this.getPromise().then(resolveHandler, rejectHandler);
+    },
+
+    'catch': function(handler) {
+      return this.getPromise()['catch'](handler);
+    },
+
+    'finally': function(handler) {
+      return this.getPromise()['finally'](handler);
+    },
+
+    pause: function() {
+      if (this.host.pause) {
+        this.host.pause();
+      }
+    },
+
+    resume: function() {
+      if (this.host.resume) {
+        this.host.resume();
+      }
+    },
+
+    end: function() {
+      if (this.host.end) {
+        this.host.end();
+      }
+      this._resolve(true);
+    },
+
+    cancel: function() {
+      if (this.host.cancel) {
+        this.host.cancel();
+      }
+      this._resolve(false);
+    },
+
+    complete: function(response) {
+      var self = this;
+      if (self._state === INITIAL_STATE) {
+        self._state = DONE_PENDING_STATE;
+        self._runInAnimationFrame(function() {
+          self._resolve(response);
+        });
+      }
+    },
+
+    _resolve: function(response) {
+      if (this._state !== DONE_COMPLETE_STATE) {
+        forEach(this._doneCallbacks, function(fn) {
+          fn(response);
+        });
+        this._doneCallbacks.length = 0;
+        this._state = DONE_COMPLETE_STATE;
+      }
+    }
+  };
+
+  return AnimateRunner;
+}];
+
+var $$AnimationProvider = ['$animateProvider', function($animateProvider) {
+  var NG_ANIMATE_REF_ATTR = 'ng-animate-ref';
+
+  var drivers = this.drivers = [];
+
+  var RUNNER_STORAGE_KEY = '$$animationRunner';
+
+  function setRunner(element, runner) {
+    element.data(RUNNER_STORAGE_KEY, runner);
+  }
+
+  function removeRunner(element) {
+    element.removeData(RUNNER_STORAGE_KEY);
+  }
+
+  function getRunner(element) {
+    return element.data(RUNNER_STORAGE_KEY);
+  }
+
+  this.$get = ['$$jqLite', '$rootScope', '$injector', '$$AnimateRunner', '$$rAFScheduler',
+       function($$jqLite,   $rootScope,   $injector,   $$AnimateRunner,   $$rAFScheduler) {
+
+    var animationQueue = [];
+    var applyAnimationClasses = applyAnimationClassesFactory($$jqLite);
+
+    var totalPendingClassBasedAnimations = 0;
+    var totalActiveClassBasedAnimations = 0;
+    var classBasedAnimationsQueue = [];
+
+    // TODO(matsko): document the signature in a better way
+    return function(element, event, options) {
+      options = prepareAnimationOptions(options);
+      var isStructural = ['enter', 'move', 'leave'].indexOf(event) >= 0;
+
+      // there is no animation at the current moment, however
+      // these runner methods will get later updated with the
+      // methods leading into the driver's end/cancel methods
+      // for now they just stop the animation from starting
+      var runner = new $$AnimateRunner({
+        end: function() { close(); },
+        cancel: function() { close(true); }
+      });
+
+      if (!drivers.length) {
+        close();
+        return runner;
+      }
+
+      setRunner(element, runner);
+
+      var classes = mergeClasses(element.attr('class'), mergeClasses(options.addClass, options.removeClass));
+      var tempClasses = options.tempClasses;
+      if (tempClasses) {
+        classes += ' ' + tempClasses;
+        options.tempClasses = null;
+      }
+
+      var classBasedIndex;
+      if (!isStructural) {
+        classBasedIndex = totalPendingClassBasedAnimations;
+        totalPendingClassBasedAnimations += 1;
+      }
+
+      animationQueue.push({
+        // this data is used by the postDigest code and passed into
+        // the driver step function
+        element: element,
+        classes: classes,
+        event: event,
+        classBasedIndex: classBasedIndex,
+        structural: isStructural,
+        options: options,
+        beforeStart: beforeStart,
+        close: close
+      });
+
+      element.on('$destroy', handleDestroyedElement);
+
+      // we only want there to be one function called within the post digest
+      // block. This way we can group animations for all the animations that
+      // were apart of the same postDigest flush call.
+      if (animationQueue.length > 1) return runner;
+
+      $rootScope.$$postDigest(function() {
+        totalActiveClassBasedAnimations = totalPendingClassBasedAnimations;
+        totalPendingClassBasedAnimations = 0;
+        classBasedAnimationsQueue.length = 0;
+
+        var animations = [];
+        forEach(animationQueue, function(entry) {
+          // the element was destroyed early on which removed the runner
+          // form its storage. This means we can't animate this element
+          // at all and it already has been closed due to destruction.
+          if (getRunner(entry.element)) {
+            animations.push(entry);
+          }
+        });
+
+        // now any future animations will be in another postDigest
+        animationQueue.length = 0;
+
+        forEach(groupAnimations(animations), function(animationEntry) {
+          if (animationEntry.structural) {
+            triggerAnimationStart();
+          } else {
+            classBasedAnimationsQueue.push({
+              node: getDomNode(animationEntry.element),
+              fn: triggerAnimationStart
+            });
+
+            if (animationEntry.classBasedIndex === totalActiveClassBasedAnimations - 1) {
+              // we need to sort each of the animations in order of parent to child
+              // relationships. This ensures that the child classes are applied at the
+              // right time.
+              classBasedAnimationsQueue = classBasedAnimationsQueue.sort(function(a,b) {
+                return b.node.contains(a.node);
+              }).map(function(entry) {
+                return entry.fn;
+              });
+
+              $$rAFScheduler(classBasedAnimationsQueue);
+            }
+          }
+
+          function triggerAnimationStart() {
+            // it's important that we apply the `ng-animate` CSS class and the
+            // temporary classes before we do any driver invoking since these
+            // CSS classes may be required for proper CSS detection.
+            animationEntry.beforeStart();
+
+            var startAnimationFn, closeFn = animationEntry.close;
+
+            // in the event that the element was removed before the digest runs or
+            // during the RAF sequencing then we should not trigger the animation.
+            var targetElement = animationEntry.anchors
+                ? (animationEntry.from.element || animationEntry.to.element)
+                : animationEntry.element;
+
+            if (getRunner(targetElement)) {
+              var operation = invokeFirstDriver(animationEntry);
+              if (operation) {
+                startAnimationFn = operation.start;
+              }
+            }
+
+            if (!startAnimationFn) {
+              closeFn();
+            } else {
+              var animationRunner = startAnimationFn();
+              animationRunner.done(function(status) {
+                closeFn(!status);
+              });
+              updateAnimationRunners(animationEntry, animationRunner);
+            }
+          }
+        });
+      });
+
+      return runner;
+
+      // TODO(matsko): change to reference nodes
+      function getAnchorNodes(node) {
+        var SELECTOR = '[' + NG_ANIMATE_REF_ATTR + ']';
+        var items = node.hasAttribute(NG_ANIMATE_REF_ATTR)
+              ? [node]
+              : node.querySelectorAll(SELECTOR);
+        var anchors = [];
+        forEach(items, function(node) {
+          var attr = node.getAttribute(NG_ANIMATE_REF_ATTR);
+          if (attr && attr.length) {
+            anchors.push(node);
+          }
+        });
+        return anchors;
+      }
+
+      function groupAnimations(animations) {
+        var preparedAnimations = [];
+        var refLookup = {};
+        forEach(animations, function(animation, index) {
+          var element = animation.element;
+          var node = getDomNode(element);
+          var event = animation.event;
+          var enterOrMove = ['enter', 'move'].indexOf(event) >= 0;
+          var anchorNodes = animation.structural ? getAnchorNodes(node) : [];
+
+          if (anchorNodes.length) {
+            var direction = enterOrMove ? 'to' : 'from';
+
+            forEach(anchorNodes, function(anchor) {
+              var key = anchor.getAttribute(NG_ANIMATE_REF_ATTR);
+              refLookup[key] = refLookup[key] || {};
+              refLookup[key][direction] = {
+                animationID: index,
+                element: jqLite(anchor)
+              };
+            });
+          } else {
+            preparedAnimations.push(animation);
+          }
+        });
+
+        var usedIndicesLookup = {};
+        var anchorGroups = {};
+        forEach(refLookup, function(operations, key) {
+          var from = operations.from;
+          var to = operations.to;
+
+          if (!from || !to) {
+            // only one of these is set therefore we can't have an
+            // anchor animation since all three pieces are required
+            var index = from ? from.animationID : to.animationID;
+            var indexKey = index.toString();
+            if (!usedIndicesLookup[indexKey]) {
+              usedIndicesLookup[indexKey] = true;
+              preparedAnimations.push(animations[index]);
+            }
+            return;
+          }
+
+          var fromAnimation = animations[from.animationID];
+          var toAnimation = animations[to.animationID];
+          var lookupKey = from.animationID.toString();
+          if (!anchorGroups[lookupKey]) {
+            var group = anchorGroups[lookupKey] = {
+              structural: true,
+              beforeStart: function() {
+                fromAnimation.beforeStart();
+                toAnimation.beforeStart();
+              },
+              close: function() {
+                fromAnimation.close();
+                toAnimation.close();
+              },
+              classes: cssClassesIntersection(fromAnimation.classes, toAnimation.classes),
+              from: fromAnimation,
+              to: toAnimation,
+              anchors: [] // TODO(matsko): change to reference nodes
+            };
+
+            // the anchor animations require that the from and to elements both have at least
+            // one shared CSS class which effictively marries the two elements together to use
+            // the same animation driver and to properly sequence the anchor animation.
+            if (group.classes.length) {
+              preparedAnimations.push(group);
+            } else {
+              preparedAnimations.push(fromAnimation);
+              preparedAnimations.push(toAnimation);
+            }
+          }
+
+          anchorGroups[lookupKey].anchors.push({
+            'out': from.element, 'in': to.element
+          });
+        });
+
+        return preparedAnimations;
+      }
+
+      function cssClassesIntersection(a,b) {
+        a = a.split(' ');
+        b = b.split(' ');
+        var matches = [];
+
+        for (var i = 0; i < a.length; i++) {
+          var aa = a[i];
+          if (aa.substring(0,3) === 'ng-') continue;
+
+          for (var j = 0; j < b.length; j++) {
+            if (aa === b[j]) {
+              matches.push(aa);
+              break;
+            }
+          }
+        }
+
+        return matches.join(' ');
+      }
+
+      function invokeFirstDriver(animationDetails) {
+        // we loop in reverse order since the more general drivers (like CSS and JS)
+        // may attempt more elements, but custom drivers are more particular
+        for (var i = drivers.length - 1; i >= 0; i--) {
+          var driverName = drivers[i];
+          if (!$injector.has(driverName)) continue; // TODO(matsko): remove this check
+
+          var factory = $injector.get(driverName);
+          var driver = factory(animationDetails);
+          if (driver) {
+            return driver;
+          }
+        }
+      }
+
+      function beforeStart() {
+        element.addClass(NG_ANIMATE_CLASSNAME);
+        if (tempClasses) {
+          $$jqLite.addClass(element, tempClasses);
+        }
+      }
+
+      function updateAnimationRunners(animation, newRunner) {
+        if (animation.from && animation.to) {
+          update(animation.from.element);
+          update(animation.to.element);
+        } else {
+          update(animation.element);
+        }
+
+        function update(element) {
+          getRunner(element).setHost(newRunner);
+        }
+      }
+
+      function handleDestroyedElement() {
+        var runner = getRunner(element);
+        if (runner && (event !== 'leave' || !options.$$domOperationFired)) {
+          runner.end();
+        }
+      }
+
+      function close(rejected) { // jshint ignore:line
+        element.off('$destroy', handleDestroyedElement);
+        removeRunner(element);
+
+        applyAnimationClasses(element, options);
+        applyAnimationStyles(element, options);
+        options.domOperation();
+
+        if (tempClasses) {
+          $$jqLite.removeClass(element, tempClasses);
+        }
+
+        element.removeClass(NG_ANIMATE_CLASSNAME);
+        runner.complete(!rejected);
+      }
+    };
+  }];
+}];
+
+/* global angularAnimateModule: true,
+
+   $$rAFMutexFactory,
+   $$rAFSchedulerFactory,
+   $$AnimateChildrenDirective,
+   $$AnimateRunnerFactory,
+   $$AnimateQueueProvider,
+   $$AnimationProvider,
+   $AnimateCssProvider,
+   $$AnimateCssDriverProvider,
+   $$AnimateJsProvider,
+   $$AnimateJsDriverProvider,
+*/
 
 /**
  * @ngdoc module
  * @name ngAnimate
  * @description
  *
- * The `ngAnimate` module provides support for JavaScript, CSS3 transition and CSS3 keyframe animation hooks within existing core and custom directives.
+ * The `ngAnimate` module provides support for CSS-based animations (keyframes and transitions) as well as JavaScript-based animations via
+ * callback hooks. Animations are not enabled by default, however, by including `ngAnimate` then the animation hooks are enabled for an Angular app.
  *
  * <div doc-module-components="ngAnimate"></div>
  *
  * # Usage
+ * Simply put, there are two ways to make use of animations when ngAnimate is used: by using **CSS** and **JavaScript**. The former works purely based
+ * using CSS (by using matching CSS selectors/styles) and the latter triggers animations that are registered via `module.animation()`. For
+ * both CSS and JS animations the sole requirement is to have a matching `CSS class` that exists both in the registered animation and within
+ * the HTML element that the animation will be triggered on.
  *
- * To see animations in action, all that is required is to define the appropriate CSS classes
- * or to register a JavaScript animation via the `myModule.animation()` function. The directives that support animation automatically are:
- * `ngRepeat`, `ngInclude`, `ngIf`, `ngSwitch`, `ngShow`, `ngHide`, `ngView` and `ngClass`. Custom directives can take advantage of animation
- * by using the `$animate` service.
- *
- * Below is a more detailed breakdown of the supported animation events provided by pre-existing ng directives:
+ * ## Directive Support
+ * The following directives are "animation aware":
  *
  * | Directive                                                                                                | Supported Animations                                                     |
  * |----------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
@@ -48091,192 +53501,631 @@ $provide.value("$locale", {
  * | {@link module:ngMessages#animations ngMessages}                                                          | add and remove (ng-active & ng-inactive)                                 |
  * | {@link module:ngMessages#animations ngMessage}                                                           | enter and leave                                                          |
  *
- * You can find out more information about animations upon visiting each directive page.
+ * (More information can be found by visiting each the documentation associated with each directive.)
  *
- * Below is an example of how to apply animations to a directive that supports animation hooks:
+ * ## CSS-based Animations
  *
- * ```html
- * <style type="text/css">
- * .slide.ng-enter, .slide.ng-leave {
- *   -webkit-transition:0.5s linear all;
- *   transition:0.5s linear all;
- * }
+ * CSS-based animations with ngAnimate are unique since they require no JavaScript code at all. By using a CSS class that we reference between our HTML
+ * and CSS code we can create an animation that will be picked up by Angular when an the underlying directive performs an operation.
  *
- * .slide.ng-enter { }        /&#42; starting animations for enter &#42;/
- * .slide.ng-enter.ng-enter-active { } /&#42; terminal animations for enter &#42;/
- * .slide.ng-leave { }        /&#42; starting animations for leave &#42;/
- * .slide.ng-leave.ng-leave-active { } /&#42; terminal animations for leave &#42;/
- * </style>
- *
- * <!--
- * the animate service will automatically add .ng-enter and .ng-leave to the element
- * to trigger the CSS transition/animations
- * -->
- * <ANY class="slide" ng-include="..."></ANY>
- * ```
- *
- * Keep in mind that, by default, if an animation is running, any child elements cannot be animated
- * until the parent element's animation has completed. This blocking feature can be overridden by
- * placing the `ng-animate-children` attribute on a parent container tag.
+ * The example below shows how an `enter` animation can be made possible on a element using `ng-if`:
  *
  * ```html
- * <div class="slide-animation" ng-if="on" ng-animate-children>
- *   <div class="fade-animation" ng-if="on">
- *     <div class="explode-animation" ng-if="on">
- *        ...
- *     </div>
- *   </div>
+ * <div ng-if="bool" class="fade">
+ *    Fade me in out
  * </div>
+ * <button ng-click="bool=true">Fade In!</button>
+ * <button ng-click="bool=false">Fade Out!</button>
  * ```
  *
- * When the `on` expression value changes and an animation is triggered then each of the elements within
- * will all animate without the block being applied to child elements.
- *
- * ## Are animations run when the application starts?
- * No they are not. When an application is bootstrapped Angular will disable animations from running to avoid
- * a frenzy of animations from being triggered as soon as the browser has rendered the screen. For this to work,
- * Angular will wait for two digest cycles until enabling animations. From there on, any animation-triggering
- * layout changes in the application will trigger animations as normal.
- *
- * In addition, upon bootstrap, if the routing system or any directives or load remote data (via $http) then Angular
- * will automatically extend the wait time to enable animations once **all** of the outbound HTTP requests
- * are complete.
- *
- * ## CSS-defined Animations
- * The animate service will automatically apply two CSS classes to the animated element and these two CSS classes
- * are designed to contain the start and end CSS styling. Both CSS transitions and keyframe animations are supported
- * and can be used to play along with this naming structure.
- *
- * The following code below demonstrates how to perform animations using **CSS transitions** with Angular:
- *
- * ```html
- * <style type="text/css">
- * /&#42;
- *  The animate class is apart of the element and the ng-enter class
- *  is attached to the element once the enter animation event is triggered
- * &#42;/
- * .reveal-animation.ng-enter {
- *  -webkit-transition: 1s linear all; /&#42; Safari/Chrome &#42;/
- *  transition: 1s linear all; /&#42; All other modern browsers and IE10+ &#42;/
- *
- *  /&#42; The animation preparation code &#42;/
- *  opacity: 0;
- * }
- *
- * /&#42;
- *  Keep in mind that you want to combine both CSS
- *  classes together to avoid any CSS-specificity
- *  conflicts
- * &#42;/
- * .reveal-animation.ng-enter.ng-enter-active {
- *  /&#42; The animation code itself &#42;/
- *  opacity: 1;
- * }
- * </style>
- *
- * <div class="view-container">
- *   <div ng-view class="reveal-animation"></div>
- * </div>
- * ```
- *
- * The following code below demonstrates how to perform animations using **CSS animations** with Angular:
- *
- * ```html
- * <style type="text/css">
- * .reveal-animation.ng-enter {
- *   -webkit-animation: enter_sequence 1s linear; /&#42; Safari/Chrome &#42;/
- *   animation: enter_sequence 1s linear; /&#42; IE10+ and Future Browsers &#42;/
- * }
- * @-webkit-keyframes enter_sequence {
- *   from { opacity:0; }
- *   to { opacity:1; }
- * }
- * @keyframes enter_sequence {
- *   from { opacity:0; }
- *   to { opacity:1; }
- * }
- * </style>
- *
- * <div class="view-container">
- *   <div ng-view class="reveal-animation"></div>
- * </div>
- * ```
- *
- * Both CSS3 animations and transitions can be used together and the animate service will figure out the correct duration and delay timing.
- *
- * Upon DOM mutation, the event class is added first (something like `ng-enter`), then the browser prepares itself to add
- * the active class (in this case `ng-enter-active`) which then triggers the animation. The animation module will automatically
- * detect the CSS code to determine when the animation ends. Once the animation is over then both CSS classes will be
- * removed from the DOM. If a browser does not support CSS transitions or CSS animations then the animation will start and end
- * immediately resulting in a DOM element that is at its final state. This final state is when the DOM element
- * has no CSS transition/animation classes applied to it.
- *
- * ### Structural transition animations
- *
- * Structural transitions (such as enter, leave and move) will always apply a `0s none` transition
- * value to force the browser into rendering the styles defined in the setup (`.ng-enter`, `.ng-leave`
- * or `.ng-move`) class. This means that any active transition animations operating on the element
- * will be cut off to make way for the enter, leave or move animation.
- *
- * ### Class-based transition animations
- *
- * Class-based transitions refer to transition animations that are triggered when a CSS class is
- * added to or removed from the element (via `$animate.addClass`, `$animate.removeClass`,
- * `$animate.setClass`, or by directives such as `ngClass`, `ngModel` and `form`).
- * They are different when compared to structural animations since they **do not cancel existing
- * animations** nor do they **block successive transitions** from rendering on the same element.
- * This distinction allows for **multiple class-based transitions** to be performed on the same element.
- *
- * In addition to ngAnimate supporting the default (natural) functionality of class-based transition
- * animations, ngAnimate also decorates the element with starting and ending CSS classes to aid the
- * developer in further styling the element throughout the transition animation. Earlier versions
- * of ngAnimate may have caused natural CSS transitions to break and not render properly due to
- * $animate temporarily blocking transitions using `0s none` in order to allow the setup CSS class
- * (the `-add` or `-remove` class) to be applied without triggering an animation. However, as of
- * **version 1.3**, this workaround has been removed with ngAnimate and all non-ngAnimate CSS
- * class transitions are compatible with ngAnimate.
- *
- * There is, however, one special case when dealing with class-based transitions in ngAnimate.
- * When rendering class-based transitions that make use of the setup and active CSS classes
- * (e.g. `.fade-add` and `.fade-add-active` for when `.fade` is added) be sure to define
- * the transition value **on the active CSS class** and not the setup class.
+ * Notice the CSS class **fade**? We can now create the CSS transition code that references this class:
  *
  * ```css
- * .fade-add {
- *   /&#42; remember to place a 0s transition here
- *      to ensure that the styles are applied instantly
- *      even if the element already has a transition style &#42;/
- *   transition:0s linear all;
+ * /&#42; The starting CSS styles for the enter animation &#42;/
+ * .fade.ng-enter {
+ *   transition:0.5s linear all;
+ *   opacity:0;
+ * }
  *
- *   /&#42; starting CSS styles &#42;/
+ * /&#42; The starting CSS styles for the enter animation &#42;/
+ * .fade.ng-enter.ng-enter-active {
  *   opacity:1;
  * }
- * .fade-add.fade-add-active {
- *   /&#42; this will be the length of the animation &#42;/
- *   transition:1s linear all;
- *   opacity:0;
- * }
  * ```
  *
- * The setup CSS class (in this case `.fade-add`) also has a transition style property, however, it
- * has a duration of zero. This may not be required, however, incase the browser is unable to render
- * the styling present in this CSS class instantly then it could be that the browser is attempting
- * to perform an unnecessary transition.
+ * The key thing to remember here is that, depending on the animation event (which each of the directives above trigger depending on what's going on) two
+ * generated CSS classes will be applied to the element; in the example above we have `.ng-enter` and `.ng-enter-active`. For CSS transitions, the transition
+ * code **must** be defined within the starting CSS class (in this case `.ng-enter`). The destination class is what the transition will animate towards.
  *
- * This workaround, however, does not apply to  standard class-based transitions that are rendered
- * when a CSS class containing a transition is applied to an element:
+ * If for example we wanted to create animations for `leave` and `move` (ngRepeat triggers move) then we can do so using the same CSS naming conventions:
  *
  * ```css
- * /&#42; this works as expected &#42;/
- * .fade {
- *   transition:1s linear all;
+ * /&#42; now the element will fade out before it is removed from the DOM &#42;/
+ * .fade.ng-leave {
+ *   transition:0.5s linear all;
+ *   opacity:1;
+ * }
+ * .fade.ng-leave.ng-leave-active {
  *   opacity:0;
  * }
  * ```
  *
- * Please keep this in mind when coding the CSS markup that will be used within class-based transitions.
- * Also, try not to mix the two class-based animation flavors together since the CSS code may become
- * overly complex.
+ * We can also make use of **CSS Keyframes** by referencing the keyframe animation within the starting CSS class:
+ *
+ * ```css
+ * /&#42; there is no need to define anything inside of the destination
+ * CSS class since the keyframe will take charge of the animation &#42;/
+ * .fade.ng-leave {
+ *   animation: my_fade_animation 0.5s linear;
+ *   -webkit-animation: my_fade_animation 0.5s linear;
+ * }
+ *
+ * @keyframes my_fade_animation {
+ *   from { opacity:1; }
+ *   to { opacity:0; }
+ * }
+ *
+ * @-webkit-keyframes my_fade_animation {
+ *   from { opacity:1; }
+ *   to { opacity:0; }
+ * }
+ * ```
+ *
+ * Feel free also mix transitions and keyframes together as well as any other CSS classes on the same element.
+ *
+ * ### CSS Class-based Animations
+ *
+ * Class-based animations (animations that are triggered via `ngClass`, `ngShow`, `ngHide` and some other directives) have a slightly different
+ * naming convention. Class-based animations are basic enough that a standard transition or keyframe can be referenced on the class being added
+ * and removed.
+ *
+ * For example if we wanted to do a CSS animation for `ngHide` then we place an animation on the `.ng-hide` CSS class:
+ *
+ * ```html
+ * <div ng-show="bool" class="fade">
+ *   Show and hide me
+ * </div>
+ * <button ng-click="bool=true">Toggle</button>
+ *
+ * <style>
+ * .fade.ng-hide {
+ *   transition:0.5s linear all;
+ *   opacity:0;
+ * }
+ * </style>
+ * ```
+ *
+ * All that is going on here with ngShow/ngHide behind the scenes is the `.ng-hide` class is added/removed (when the hidden state is valid). Since
+ * ngShow and ngHide are animation aware then we can match up a transition and ngAnimate handles the rest.
+ *
+ * In addition the addition and removal of the CSS class, ngAnimate also provides two helper methods that we can use to further decorate the animation
+ * with CSS styles.
+ *
+ * ```html
+ * <div ng-class="{on:onOff}" class="highlight">
+ *   Highlight this box
+ * </div>
+ * <button ng-click="onOff=!onOff">Toggle</button>
+ *
+ * <style>
+ * .highlight {
+ *   transition:0.5s linear all;
+ * }
+ * .highlight.on-add {
+ *   background:white;
+ * }
+ * .highlight.on {
+ *   background:yellow;
+ * }
+ * .highlight.on-remove {
+ *   background:black;
+ * }
+ * </style>
+ * ```
+ *
+ * We can also make use of CSS keyframes by placing them within the CSS classes.
+ *
+ *
+ * ### CSS Staggering Animations
+ * A Staggering animation is a collection of animations that are issued with a slight delay in between each successive operation resulting in a
+ * curtain-like effect. The ngAnimate module (versions >=1.2) supports staggering animations and the stagger effect can be
+ * performed by creating a **ng-EVENT-stagger** CSS class and attaching that class to the base CSS class used for
+ * the animation. The style property expected within the stagger class can either be a **transition-delay** or an
+ * **animation-delay** property (or both if your animation contains both transitions and keyframe animations).
+ *
+ * ```css
+ * .my-animation.ng-enter {
+ *   /&#42; standard transition code &#42;/
+ *   transition: 1s linear all;
+ *   opacity:0;
+ * }
+ * .my-animation.ng-enter-stagger {
+ *   /&#42; this will have a 100ms delay between each successive leave animation &#42;/
+ *   transition-delay: 0.1s;
+ *
+ *   /&#42; in case the stagger doesn't work then the duration value
+ *    must be set to 0 to avoid an accidental CSS inheritance &#42;/
+ *   transition-duration: 0s;
+ * }
+ * .my-animation.ng-enter.ng-enter-active {
+ *   /&#42; standard transition styles &#42;/
+ *   opacity:1;
+ * }
+ * ```
+ *
+ * Staggering animations work by default in ngRepeat (so long as the CSS class is defined). Outside of ngRepeat, to use staggering animations
+ * on your own, they can be triggered by firing multiple calls to the same event on $animate. However, the restrictions surrounding this
+ * are that each of the elements must have the same CSS className value as well as the same parent element. A stagger operation
+ * will also be reset if one or more animation frames have passed since the multiple calls to `$animate` were fired.
+ *
+ * The following code will issue the **ng-leave-stagger** event on the element provided:
+ *
+ * ```js
+ * var kids = parent.children();
+ *
+ * $animate.leave(kids[0]); //stagger index=0
+ * $animate.leave(kids[1]); //stagger index=1
+ * $animate.leave(kids[2]); //stagger index=2
+ * $animate.leave(kids[3]); //stagger index=3
+ * $animate.leave(kids[4]); //stagger index=4
+ *
+ * window.requestAnimationFrame(function() {
+ *   //stagger has reset itself
+ *   $animate.leave(kids[5]); //stagger index=0
+ *   $animate.leave(kids[6]); //stagger index=1
+ *
+ *   $scope.$digest();
+ * });
+ * ```
+ *
+ * Stagger animations are currently only supported within CSS-defined animations.
+ *
+ * ### The `ng-animate` CSS class
+ *
+ * When ngAnimate is animating an element it will apply the `ng-animate` CSS class to the element for the duration of the animation.
+ * This is a temporary CSS class and it will be removed once the animation is over (for both JavaScript and CSS-based animations).
+ *
+ * Therefore, animations can be applied to an element using this temporary class directly via CSS.
+ *
+ * ```css
+ * .zipper.ng-animate {
+ *   transition:0.5s linear all;
+ * }
+ * .zipper.ng-enter {
+ *   opacity:0;
+ * }
+ * .zipper.ng-enter.ng-enter-active {
+ *   opacity:1;
+ * }
+ * .zipper.ng-leave {
+ *   opacity:1;
+ * }
+ * .zipper.ng-leave.ng-leave-active {
+ *   opacity:0;
+ * }
+ * ```
+ *
+ * (Note that the `ng-animate` CSS class is reserved and it cannot be applied on an element directly since ngAnimate will always remove
+ * the CSS class once an animation has completed.)
+ *
+ *
+ * ## JavaScript-based Animations
+ *
+ * ngAnimate also allows for animations to be consumed by JavaScript code. The approach is similar to CSS-based animations (where there is a shared
+ * CSS class that is referenced in our HTML code) but in addition we need to register the JavaScript animation on the module. By making use of the
+ * `module.animation()` module function we can register the ainmation.
+ *
+ * Let's see an example of a enter/leave animation using `ngRepeat`:
+ *
+ * ```html
+ * <div ng-repeat="item in items" class="slide">
+ *   {{ item }}
+ * </div>
+ * ```
+ *
+ * See the **slide** CSS class? Let's use that class to define an animation that we'll structure in our module code by using `module.animation`:
+ *
+ * ```js
+ * myModule.animation('.slide', [function() {
+ *   return {
+ *     // make note that other events (like addClass/removeClass)
+ *     // have different function input parameters
+ *     enter: function(element, doneFn) {
+ *       jQuery(element).fadeIn(1000, doneFn);
+ *
+ *       // remember to call doneFn so that angular
+ *       // knows that the animation has concluded
+ *     },
+ *
+ *     move: function(element, doneFn) {
+ *       jQuery(element).fadeIn(1000, doneFn);
+ *     },
+ *
+ *     leave: function(element, doneFn) {
+ *       jQuery(element).fadeOut(1000, doneFn);
+ *     }
+ *   }
+ * }]
+ * ```
+ *
+ * The nice thing about JS-based animations is that we can inject other services and make use of advanced animation libraries such as
+ * greensock.js and velocity.js.
+ *
+ * If our animation code class-based (meaning that something like `ngClass`, `ngHide` and `ngShow` triggers it) then we can still define
+ * our animations inside of the same registered animation, however, the function input arguments are a bit different:
+ *
+ * ```html
+ * <div ng-class="color" class="colorful">
+ *   this box is moody
+ * </div>
+ * <button ng-click="color='red'">Change to red</button>
+ * <button ng-click="color='blue'">Change to blue</button>
+ * <button ng-click="color='green'">Change to green</button>
+ * ```
+ *
+ * ```js
+ * myModule.animation('.colorful', [function() {
+ *   return {
+ *     addClass: function(element, className, doneFn) {
+ *       // do some cool animation and call the doneFn
+ *     },
+ *     removeClass: function(element, className, doneFn) {
+ *       // do some cool animation and call the doneFn
+ *     },
+ *     setClass: function(element, addedClass, removedClass, doneFn) {
+ *       // do some cool animation and call the doneFn
+ *     }
+ *   }
+ * }]
+ * ```
+ *
+ * ## CSS + JS Animations Together
+ *
+ * AngularJS 1.4 and higher has taken steps to make the amalgamation of CSS and JS animations more flexible. However, unlike earlier versions of Angular,
+ * defining CSS and JS animations to work off of the same CSS class will not work anymore. Therefore example below will only result in **JS animations taking
+ * charge of the animation**:
+ *
+ * ```html
+ * <div ng-if="bool" class="slide">
+ *   Slide in and out
+ * </div>
+ * ```
+ *
+ * ```js
+ * myModule.animation('.slide', [function() {
+ *   return {
+ *     enter: function(element, doneFn) {
+ *       jQuery(element).slideIn(1000, doneFn);
+ *     }
+ *   }
+ * }]
+ * ```
+ *
+ * ```css
+ * .slide.ng-enter {
+ *   transition:0.5s linear all;
+ *   transform:translateY(-100px);
+ * }
+ * .slide.ng-enter.ng-enter-active {
+ *   transform:translateY(0);
+ * }
+ * ```
+ *
+ * Does this mean that CSS and JS animations cannot be used together? Do JS-based animations always have higher priority? We can suppliment for the
+ * lack of CSS animations by making use of the `$animateCss` service to trigger our own tweaked-out, CSS-based animations directly from
+ * our own JS-based animation code:
+ *
+ * ```js
+ * myModule.animation('.slide', ['$animateCss', function($animateCss) {
+ *   return {
+ *     enter: function(element, doneFn) {
+*        // this will trigger `.slide.ng-enter` and `.slide.ng-enter-active`.
+ *       var runner = $animateCss(element, {
+ *         event: 'enter',
+ *         structural: true
+ *       }).start();
+*        runner.done(doneFn);
+ *     }
+ *   }
+ * }]
+ * ```
+ *
+ * The nice thing here is that we can save bandwidth by sticking to our CSS-based animation code and we don't need to rely on a 3rd-party animation framework.
+ *
+ * The `$animateCss` service is very powerful since we can feed in all kinds of extra properties that will be evaluated and fed into a CSS transition or
+ * keyframe animation. For example if we wanted to animate the height of an element while adding and removing classes then we can do so by providing that
+ * data into `$animateCss` directly:
+ *
+ * ```js
+ * myModule.animation('.slide', ['$animateCss', function($animateCss) {
+ *   return {
+ *     enter: function(element, doneFn) {
+ *       var runner = $animateCss(element, {
+ *         event: 'enter',
+ *         addClass: 'maroon-setting',
+ *         from: { height:0 },
+ *         to: { height: 200 }
+ *       }).start();
+ *
+ *       runner.done(doneFn);
+ *     }
+ *   }
+ * }]
+ * ```
+ *
+ * Now we can fill in the rest via our transition CSS code:
+ *
+ * ```css
+ * /&#42; the transition tells ngAnimate to make the animation happen &#42;/
+ * .slide.ng-enter { transition:0.5s linear all; }
+ *
+ * /&#42; this extra CSS class will be absorbed into the transition
+ * since the $animateCss code is adding the class &#42;/
+ * .maroon-setting { background:red; }
+ * ```
+ *
+ * And `$animateCss` will figure out the rest. Just make sure to have the `done()` callback fire the `doneFn` function to signal when the animation is over.
+ *
+ * To learn more about what's possible be sure to visit the {@link ngAnimate.$animateCss $animateCss service}.
+ *
+ * ## Animation Anchoring (via `ng-animate-ref`)
+ *
+ * ngAnimate in AngularJS 1.4 comes packed with the ability to cross-animate elements between
+ * structural areas of an application (like views) by pairing up elements using an attribute
+ * called `ng-animate-ref`.
+ *
+ * Let's say for example we have two views that are managed by `ng-view` and we want to show
+ * that there is a relationship between two components situated in within these views. By using the
+ * `ng-animate-ref` attribute we can identify that the two components are paired together and we
+ * can then attach an animation, which is triggered when the view changes.
+ *
+ * Say for example we have the following template code:
+ *
+ * ```html
+ * <!-- index.html -->
+ * <div ng-view class="view-animation">
+ * </div>
+ *
+ * <!-- home.html -->
+ * <a href="#/banner-page">
+ *   <img src="./banner.jpg" class="banner" ng-animate-ref="banner">
+ * </a>
+ *
+ * <!-- banner-page.html -->
+ * <img src="./banner.jpg" class="banner" ng-animate-ref="banner">
+ * ```
+ *
+ * Now, when the view changes (once the link is clicked), ngAnimate will examine the
+ * HTML contents to see if there is a match reference between any components in the view
+ * that is leaving and the view that is entering. It will scan both the view which is being
+ * removed (leave) and inserted (enter) to see if there are any paired DOM elements that
+ * contain a matching ref value.
+ *
+ * The two images match since they share the same ref value. ngAnimate will now create a
+ * transport element (which is a clone of the first image element) and it will then attempt
+ * to animate to the position of the second image element in the next view. For the animation to
+ * work a special CSS class called `ng-anchor` will be added to the transported element.
+ *
+ * We can now attach a transition onto the `.banner.ng-anchor` CSS class and then
+ * ngAnimate will handle the entire transition for us as well as the addition and removal of
+ * any changes of CSS classes between the elements:
+ *
+ * ```css
+ * .banner.ng-anchor {
+ *   /&#42; this animation will last for 1 second since there are
+ *          two phases to the animation (an `in` and an `out` phase) &#42;/
+ *   transition:0.5s linear all;
+ * }
+ * ```
+ *
+ * We also **must** include animations for the views that are being entered and removed
+ * (otherwise anchoring wouldn't be possible since the new view would be inserted right away).
+ *
+ * ```css
+ * .view-animation.ng-enter, .view-animation.ng-leave {
+ *   transition:0.5s linear all;
+ *   position:fixed;
+ *   left:0;
+ *   top:0;
+ *   width:100%;
+ * }
+ * .view-animation.ng-enter {
+ *   transform:translateX(100%);
+ * }
+ * .view-animation.ng-leave,
+ * .view-animation.ng-enter.ng-enter-active {
+ *   transform:translateX(0%);
+ * }
+ * .view-animation.ng-leave.ng-leave-active {
+ *   transform:translateX(-100%);
+ * }
+ * ```
+ *
+ * Now we can jump back to the anchor animation. When the animation happens, there are two stages that occur:
+ * an `out` and an `in` stage. The `out` stage happens first and that is when the element is animated away
+ * from its origin. Once that animation is over then the `in` stage occurs which animates the
+ * element to its destination. The reason why there are two animations is to give enough time
+ * for the enter animation on the new element to be ready.
+ *
+ * The example above sets up a transition for both the in and out phases, but we can also target the out or
+ * in phases directly via `ng-anchor-out` and `ng-anchor-in`.
+ *
+ * ```css
+ * .banner.ng-anchor-out {
+ *   transition: 0.5s linear all;
+ *
+ *   /&#42; the scale will be applied during the out animation,
+ *          but will be animated away when the in animation runs &#42;/
+ *   transform: scale(1.2);
+ * }
+ *
+ * .banner.ng-anchor-in {
+ *   transition: 1s linear all;
+ * }
+ * ```
+ *
+ *
+ *
+ *
+ * ### Anchoring Demo
+ *
+  <example module="anchoringExample"
+           name="anchoringExample"
+           id="anchoringExample"
+           deps="angular-animate.js;angular-route.js"
+           animations="true">
+    <file name="index.html">
+      <a href="#/">Home</a>
+      <hr />
+      <div class="view-container">
+        <div ng-view class="view"></div>
+      </div>
+    </file>
+    <file name="script.js">
+      angular.module('anchoringExample', ['ngAnimate', 'ngRoute'])
+        .config(['$routeProvider', function($routeProvider) {
+          $routeProvider.when('/', {
+            templateUrl: 'home.html',
+            controller: 'HomeController as home'
+          });
+          $routeProvider.when('/profile/:id', {
+            templateUrl: 'profile.html',
+            controller: 'ProfileController as profile'
+          });
+        }])
+        .run(['$rootScope', function($rootScope) {
+          $rootScope.records = [
+            { id:1, title: "Miss Beulah Roob" },
+            { id:2, title: "Trent Morissette" },
+            { id:3, title: "Miss Ava Pouros" },
+            { id:4, title: "Rod Pouros" },
+            { id:5, title: "Abdul Rice" },
+            { id:6, title: "Laurie Rutherford Sr." },
+            { id:7, title: "Nakia McLaughlin" },
+            { id:8, title: "Jordon Blanda DVM" },
+            { id:9, title: "Rhoda Hand" },
+            { id:10, title: "Alexandrea Sauer" }
+          ];
+        }])
+        .controller('HomeController', [function() {
+          //empty
+        }])
+        .controller('ProfileController', ['$rootScope', '$routeParams', function($rootScope, $routeParams) {
+          var index = parseInt($routeParams.id, 10);
+          var record = $rootScope.records[index - 1];
+
+          this.title = record.title;
+          this.id = record.id;
+        }]);
+    </file>
+    <file name="home.html">
+      <h2>Welcome to the home page</h1>
+      <p>Please click on an element</p>
+      <a class="record"
+         ng-href="#/profile/{{ record.id }}"
+         ng-animate-ref="{{ record.id }}"
+         ng-repeat="record in records">
+        {{ record.title }}
+      </a>
+    </file>
+    <file name="profile.html">
+      <div class="profile record" ng-animate-ref="{{ profile.id }}">
+        {{ profile.title }}
+      </div>
+    </file>
+    <file name="animations.css">
+      .record {
+        display:block;
+        font-size:20px;
+      }
+      .profile {
+        background:black;
+        color:white;
+        font-size:100px;
+      }
+      .view-container {
+        position:relative;
+      }
+      .view-container > .view.ng-animate {
+        position:absolute;
+        top:0;
+        left:0;
+        width:100%;
+        min-height:500px;
+      }
+      .view.ng-enter, .view.ng-leave,
+      .record.ng-anchor {
+        transition:0.5s linear all;
+      }
+      .view.ng-enter {
+        transform:translateX(100%);
+      }
+      .view.ng-enter.ng-enter-active, .view.ng-leave {
+        transform:translateX(0%);
+      }
+      .view.ng-leave.ng-leave-active {
+        transform:translateX(-100%);
+      }
+      .record.ng-anchor-out {
+        background:red;
+      }
+    </file>
+  </example>
+ *
+ * ### How is the element transported?
+ *
+ * When an anchor animation occurs, ngAnimate will clone the starting element and position it exactly where the starting
+ * element is located on screen via absolute positioning. The cloned element will be placed inside of the root element
+ * of the application (where ng-app was defined) and all of the CSS classes of the starting element will be applied. The
+ * element will then animate into the `out` and `in` animations and will eventually reach the coordinates and match
+ * the dimensions of the destination element. During the entire animation a CSS class of `.ng-animate-shim` will be applied
+ * to both the starting and destination elements in order to hide them from being visible (the CSS styling for the class
+ * is: `visibility:hidden`). Once the anchor reaches its destination then it will be removed and the destination element
+ * will become visible since the shim class will be removed.
+ *
+ * ### How is the morphing handled?
+ *
+ * CSS Anchoring relies on transitions and keyframes and the internal code is intelligent enough to figure out
+ * what CSS classes differ between the starting element and the destination element. These different CSS classes
+ * will be added/removed on the anchor element and a transition will be applied (the transition that is provided
+ * in the anchor class). Long story short, ngAnimate will figure out what classes to add and remove which will
+ * make the transition of the element as smooth and automatic as possible. Be sure to use simple CSS classes that
+ * do not rely on DOM nesting structure so that the anchor element appears the same as the starting element (since
+ * the cloned element is placed inside of root element which is likely close to the body element).
+ *
+ * Note that if the root element is on the `<html>` element then the cloned node will be placed inside of body.
+ *
+ *
+ * ## Using $animate in your directive code
+ *
+ * So far we've explored how to feed in animations into an Angular application, but how do we trigger animations within our own directives in our application?
+ * By injecting the `$animate` service into our directive code, we can trigger structural and class-based hooks which can then be consumed by animations. Let's
+ * imagine we have a greeting box that shows and hides itself when the data changes
+ *
+ * ```html
+ * <greeting-box active="onOrOff">Hi there</greeting-box>
+ * ```
+ *
+ * ```js
+ * ngModule.directive('greetingBox', ['$animate', function($animate) {
+ *   return function(scope, element, attrs) {
+ *     attrs.$observe('active', function(value) {
+ *       value ? $animate.addClass(element, 'on') ? $animate.removeClass(element, 'on');
+ *     });
+ *   });
+ * }]);
+ * ```
+ *
+ * Now the `on` CSS class is added and removed on the greeting box component. Now if we add a CSS class on top of the greeting box element
+ * in our HTML code then we can trigger a CSS or JS animation to happen.
+ *
+ * ```css
+ * /&#42; normally we would create a CSS class to reference on the element &#42;/
+ * [greeting-box].on { transition:0.5s linear all; background:green; color:white; }
+ * ```
+ *
+ * The `$animate` service contains a variety of other methods like `enter`, `leave`, `animate` and `setClass`. To learn more about what's
+ * possible be sure to visit the {@link ng.$animate $animate service API page}.
  *
  *
  * ### Preventing Collisions With Third Party Libraries
@@ -48300,1897 +54149,73 @@ $provide.value("$locale", {
  * ```js
  * $animateProvider.classNameFilter(/animate-/);
  * ```
- * </div>
  *
- * ### CSS Staggering Animations
- * A Staggering animation is a collection of animations that are issued with a slight delay in between each successive operation resulting in a
- * curtain-like effect. The ngAnimate module (versions >=1.2) supports staggering animations and the stagger effect can be
- * performed by creating a **ng-EVENT-stagger** CSS class and attaching that class to the base CSS class used for
- * the animation. The style property expected within the stagger class can either be a **transition-delay** or an
- * **animation-delay** property (or both if your animation contains both transitions and keyframe animations).
+ * This also may provide your application with a speed boost since only specific elements containing CSS class prefix
+ * will be evaluated for animation when any DOM changes occur in the application.
  *
- * ```css
- * .my-animation.ng-enter {
- *   /&#42; standard transition code &#42;/
- *   -webkit-transition: 1s linear all;
- *   transition: 1s linear all;
- *   opacity:0;
- * }
- * .my-animation.ng-enter-stagger {
- *   /&#42; this will have a 100ms delay between each successive leave animation &#42;/
- *   -webkit-transition-delay: 0.1s;
- *   transition-delay: 0.1s;
+ * ## Callbacks and Promises
  *
- *   /&#42; in case the stagger doesn't work then these two values
- *    must be set to 0 to avoid an accidental CSS inheritance &#42;/
- *   -webkit-transition-duration: 0s;
- *   transition-duration: 0s;
- * }
- * .my-animation.ng-enter.ng-enter-active {
- *   /&#42; standard transition styles &#42;/
- *   opacity:1;
- * }
- * ```
- *
- * Staggering animations work by default in ngRepeat (so long as the CSS class is defined). Outside of ngRepeat, to use staggering animations
- * on your own, they can be triggered by firing multiple calls to the same event on $animate. However, the restrictions surrounding this
- * are that each of the elements must have the same CSS className value as well as the same parent element. A stagger operation
- * will also be reset if more than 10ms has passed after the last animation has been fired.
- *
- * The following code will issue the **ng-leave-stagger** event on the element provided:
+ * When `$animate` is called it returns a promise that can be used to capture when the animation has ended. Therefore if we were to trigger
+ * an animation (within our directive code) then we can continue performing directive and scope related activities after the animation has
+ * ended by chaining onto the returned promise that animation method returns.
  *
  * ```js
- * var kids = parent.children();
- *
- * $animate.leave(kids[0]); //stagger index=0
- * $animate.leave(kids[1]); //stagger index=1
- * $animate.leave(kids[2]); //stagger index=2
- * $animate.leave(kids[3]); //stagger index=3
- * $animate.leave(kids[4]); //stagger index=4
- *
- * $timeout(function() {
- *   //stagger has reset itself
- *   $animate.leave(kids[5]); //stagger index=0
- *   $animate.leave(kids[6]); //stagger index=1
- * }, 100, false);
- * ```
- *
- * Stagger animations are currently only supported within CSS-defined animations.
- *
- * ## JavaScript-defined Animations
- * In the event that you do not want to use CSS3 transitions or CSS3 animations or if you wish to offer animations on browsers that do not
- * yet support CSS transitions/animations, then you can make use of JavaScript animations defined inside of your AngularJS module.
- *
- * ```js
- * //!annotate="YourApp" Your AngularJS Module|Replace this or ngModule with the module that you used to define your application.
- * var ngModule = angular.module('YourApp', ['ngAnimate']);
- * ngModule.animation('.my-crazy-animation', function() {
- *   return {
- *     enter: function(element, done) {
- *       //run the animation here and call done when the animation is complete
- *       return function(cancelled) {
- *         //this (optional) function will be called when the animation
- *         //completes or when the animation is cancelled (the cancelled
- *         //flag will be set to true if cancelled).
- *       };
- *     },
- *     leave: function(element, done) { },
- *     move: function(element, done) { },
- *
- *     //animation that can be triggered before the class is added
- *     beforeAddClass: function(element, className, done) { },
- *
- *     //animation that can be triggered after the class is added
- *     addClass: function(element, className, done) { },
- *
- *     //animation that can be triggered before the class is removed
- *     beforeRemoveClass: function(element, className, done) { },
- *
- *     //animation that can be triggered after the class is removed
- *     removeClass: function(element, className, done) { }
- *   };
+ * // somewhere within the depths of the directive
+ * $animate.enter(element, parent).then(function() {
+ *   //the animation has completed
  * });
  * ```
  *
- * JavaScript-defined animations are created with a CSS-like class selector and a collection of events which are set to run
- * a javascript callback function. When an animation is triggered, $animate will look for a matching animation which fits
- * the element's CSS class attribute value and then run the matching animation event function (if found).
- * In other words, if the CSS classes present on the animated element match any of the JavaScript animations then the callback function will
- * be executed. It should be also noted that only simple, single class selectors are allowed (compound class selectors are not supported).
+ * (Note that earlier versions of Angular prior to v1.4 required the promise code to be wrapped using `$scope.$apply(...)`. This is not the case
+ * anymore.)
  *
- * Within a JavaScript animation, an object containing various event callback animation functions is expected to be returned.
- * As explained above, these callbacks are triggered based on the animation event. Therefore if an enter animation is run,
- * and the JavaScript animation is found, then the enter callback will handle that animation (in addition to the CSS keyframe animation
- * or transition code that is defined via a stylesheet).
- *
- *
- * ### Applying Directive-specific Styles to an Animation
- * In some cases a directive or service may want to provide `$animate` with extra details that the animation will
- * include into its animation. Let's say for example we wanted to render an animation that animates an element
- * towards the mouse coordinates as to where the user clicked last. By collecting the X/Y coordinates of the click
- * (via the event parameter) we can set the `top` and `left` styles into an object and pass that into our function
- * call to `$animate.addClass`.
+ * In addition to the animation promise, we can also make use of animation-related callbacks within our directives and controller code by registering
+ * an event listener using the `$animate` service. Let's say for example that an animation was triggered on our view
+ * routing controller to hook into that:
  *
  * ```js
- * canvas.on('click', function(e) {
- *   $animate.addClass(element, 'on', {
- *     to: {
- *       left : e.client.x + 'px',
- *       top : e.client.y + 'px'
- *     }
- *   }):
- * });
+ * ngModule.controller('HomePageController', ['$animate', function($animate) {
+ *   $animate.on('enter', ngViewElement, function(element) {
+ *     // the animation for this route has completed
+ *   }]);
+ * }])
  * ```
  *
- * Now when the animation runs, and a transition or keyframe animation is picked up, then the animation itself will
- * also include and transition the styling of the `left` and `top` properties into its running animation. If we want
- * to provide some starting animation values then we can do so by placing the starting animations styles into an object
- * called `from` in the same object as the `to` animations.
- *
- * ```js
- * canvas.on('click', function(e) {
- *   $animate.addClass(element, 'on', {
- *     from: {
- *        position: 'absolute',
- *        left: '0px',
- *        top: '0px'
- *     },
- *     to: {
- *       left : e.client.x + 'px',
- *       top : e.client.y + 'px'
- *     }
- *   }):
- * });
- * ```
- *
- * Once the animation is complete or cancelled then the union of both the before and after styles are applied to the
- * element. If `ngAnimate` is not present then the styles will be applied immediately.
- *
+ * (Note that you will need to trigger a digest within the callback to get angular to notice any scope-related changes.)
  */
 
-angular.module('ngAnimate', ['ng'])
-
-  /**
-   * @ngdoc provider
-   * @name $animateProvider
-   * @description
-   *
-   * The `$animateProvider` allows developers to register JavaScript animation event handlers directly inside of a module.
-   * When an animation is triggered, the $animate service will query the $animate service to find any animations that match
-   * the provided name value.
-   *
-   * Requires the {@link ngAnimate `ngAnimate`} module to be installed.
-   *
-   * Please visit the {@link ngAnimate `ngAnimate`} module overview page learn more about how to use animations in your application.
-   *
-   */
-  .directive('ngAnimateChildren', function() {
-    var NG_ANIMATE_CHILDREN = '$$ngAnimateChildren';
-    return function(scope, element, attrs) {
-      var val = attrs.ngAnimateChildren;
-      if (angular.isString(val) && val.length === 0) { //empty attribute
-        element.data(NG_ANIMATE_CHILDREN, true);
-      } else {
-        scope.$watch(val, function(value) {
-          element.data(NG_ANIMATE_CHILDREN, !!value);
-        });
-      }
-    };
-  })
-
-  //this private service is only used within CSS-enabled animations
-  //IE8 + IE9 do not support rAF natively, but that is fine since they
-  //also don't support transitions and keyframes which means that the code
-  //below will never be used by the two browsers.
-  .factory('$$animateReflow', ['$$rAF', '$document', function($$rAF, $document) {
-    var bod = $document[0].body;
-    return function(fn) {
-      //the returned function acts as the cancellation function
-      return $$rAF(function() {
-        //the line below will force the browser to perform a repaint
-        //so that all the animated elements within the animation frame
-        //will be properly updated and drawn on screen. This is
-        //required to perform multi-class CSS based animations with
-        //Firefox. DO NOT REMOVE THIS LINE.
-        var a = bod.offsetWidth + 1;
-        fn();
-      });
-    };
-  }])
-
-  .config(['$provide', '$animateProvider', function($provide, $animateProvider) {
-    var noop = angular.noop;
-    var forEach = angular.forEach;
-    var selectors = $animateProvider.$$selectors;
-    var isArray = angular.isArray;
-    var isString = angular.isString;
-    var isObject = angular.isObject;
-
-    var ELEMENT_NODE = 1;
-    var NG_ANIMATE_STATE = '$$ngAnimateState';
-    var NG_ANIMATE_CHILDREN = '$$ngAnimateChildren';
-    var NG_ANIMATE_CLASS_NAME = 'ng-animate';
-    var rootAnimateState = {running: true};
-
-    function extractElementNode(element) {
-      for (var i = 0; i < element.length; i++) {
-        var elm = element[i];
-        if (elm.nodeType == ELEMENT_NODE) {
-          return elm;
-        }
-      }
-    }
-
-    function prepareElement(element) {
-      return element && angular.element(element);
-    }
-
-    function stripCommentsFromElement(element) {
-      return angular.element(extractElementNode(element));
-    }
-
-    function isMatchingElement(elm1, elm2) {
-      return extractElementNode(elm1) == extractElementNode(elm2);
-    }
-    var $$jqLite;
-    $provide.decorator('$animate',
-        ['$delegate', '$$q', '$injector', '$sniffer', '$rootElement', '$$asyncCallback', '$rootScope', '$document', '$templateRequest', '$$jqLite',
- function($delegate,   $$q,   $injector,   $sniffer,   $rootElement,   $$asyncCallback,   $rootScope,   $document,   $templateRequest,   $$$jqLite) {
-
-      $$jqLite = $$$jqLite;
-      $rootElement.data(NG_ANIMATE_STATE, rootAnimateState);
-
-      // Wait until all directive and route-related templates are downloaded and
-      // compiled. The $templateRequest.totalPendingRequests variable keeps track of
-      // all of the remote templates being currently downloaded. If there are no
-      // templates currently downloading then the watcher will still fire anyway.
-      var deregisterWatch = $rootScope.$watch(
-        function() { return $templateRequest.totalPendingRequests; },
-        function(val, oldVal) {
-          if (val !== 0) return;
-          deregisterWatch();
-
-          // Now that all templates have been downloaded, $animate will wait until
-          // the post digest queue is empty before enabling animations. By having two
-          // calls to $postDigest calls we can ensure that the flag is enabled at the
-          // very end of the post digest queue. Since all of the animations in $animate
-          // use $postDigest, it's important that the code below executes at the end.
-          // This basically means that the page is fully downloaded and compiled before
-          // any animations are triggered.
-          $rootScope.$$postDigest(function() {
-            $rootScope.$$postDigest(function() {
-              rootAnimateState.running = false;
-            });
-          });
-        }
-      );
-
-      var globalAnimationCounter = 0;
-      var classNameFilter = $animateProvider.classNameFilter();
-      var isAnimatableClassName = !classNameFilter
-              ? function() { return true; }
-              : function(className) {
-                return classNameFilter.test(className);
-              };
-
-      function classBasedAnimationsBlocked(element, setter) {
-        var data = element.data(NG_ANIMATE_STATE) || {};
-        if (setter) {
-          data.running = true;
-          data.structural = true;
-          element.data(NG_ANIMATE_STATE, data);
-        }
-        return data.disabled || (data.running && data.structural);
-      }
-
-      function runAnimationPostDigest(fn) {
-        var cancelFn, defer = $$q.defer();
-        defer.promise.$$cancelFn = function() {
-          cancelFn && cancelFn();
-        };
-        $rootScope.$$postDigest(function() {
-          cancelFn = fn(function() {
-            defer.resolve();
-          });
-        });
-        return defer.promise;
-      }
-
-      function parseAnimateOptions(options) {
-        // some plugin code may still be passing in the callback
-        // function as the last param for the $animate methods so
-        // it's best to only allow string or array values for now
-        if (isObject(options)) {
-          if (options.tempClasses && isString(options.tempClasses)) {
-            options.tempClasses = options.tempClasses.split(/\s+/);
-          }
-          return options;
-        }
-      }
-
-      function resolveElementClasses(element, cache, runningAnimations) {
-        runningAnimations = runningAnimations || {};
-
-        var lookup = {};
-        forEach(runningAnimations, function(data, selector) {
-          forEach(selector.split(' '), function(s) {
-            lookup[s]=data;
-          });
-        });
-
-        var hasClasses = Object.create(null);
-        forEach((element.attr('class') || '').split(/\s+/), function(className) {
-          hasClasses[className] = true;
-        });
-
-        var toAdd = [], toRemove = [];
-        forEach((cache && cache.classes) || [], function(status, className) {
-          var hasClass = hasClasses[className];
-          var matchingAnimation = lookup[className] || {};
-
-          // When addClass and removeClass is called then $animate will check to
-          // see if addClass and removeClass cancel each other out. When there are
-          // more calls to removeClass than addClass then the count falls below 0
-          // and then the removeClass animation will be allowed. Otherwise if the
-          // count is above 0 then that means an addClass animation will commence.
-          // Once an animation is allowed then the code will also check to see if
-          // there exists any on-going animation that is already adding or remvoing
-          // the matching CSS class.
-          if (status === false) {
-            //does it have the class or will it have the class
-            if (hasClass || matchingAnimation.event == 'addClass') {
-              toRemove.push(className);
-            }
-          } else if (status === true) {
-            //is the class missing or will it be removed?
-            if (!hasClass || matchingAnimation.event == 'removeClass') {
-              toAdd.push(className);
-            }
-          }
-        });
-
-        return (toAdd.length + toRemove.length) > 0 && [toAdd.join(' '), toRemove.join(' ')];
-      }
-
-      function lookup(name) {
-        if (name) {
-          var matches = [],
-              flagMap = {},
-              classes = name.substr(1).split('.');
-
-          //the empty string value is the default animation
-          //operation which performs CSS transition and keyframe
-          //animations sniffing. This is always included for each
-          //element animation procedure if the browser supports
-          //transitions and/or keyframe animations. The default
-          //animation is added to the top of the list to prevent
-          //any previous animations from affecting the element styling
-          //prior to the element being animated.
-          if ($sniffer.transitions || $sniffer.animations) {
-            matches.push($injector.get(selectors['']));
-          }
-
-          for (var i=0; i < classes.length; i++) {
-            var klass = classes[i],
-                selectorFactoryName = selectors[klass];
-            if (selectorFactoryName && !flagMap[klass]) {
-              matches.push($injector.get(selectorFactoryName));
-              flagMap[klass] = true;
-            }
-          }
-          return matches;
-        }
-      }
-
-      function animationRunner(element, animationEvent, className, options) {
-        //transcluded directives may sometimes fire an animation using only comment nodes
-        //best to catch this early on to prevent any animation operations from occurring
-        var node = element[0];
-        if (!node) {
-          return;
-        }
-
-        if (options) {
-          options.to = options.to || {};
-          options.from = options.from || {};
-        }
-
-        var classNameAdd;
-        var classNameRemove;
-        if (isArray(className)) {
-          classNameAdd = className[0];
-          classNameRemove = className[1];
-          if (!classNameAdd) {
-            className = classNameRemove;
-            animationEvent = 'removeClass';
-          } else if (!classNameRemove) {
-            className = classNameAdd;
-            animationEvent = 'addClass';
-          } else {
-            className = classNameAdd + ' ' + classNameRemove;
-          }
-        }
-
-        var isSetClassOperation = animationEvent == 'setClass';
-        var isClassBased = isSetClassOperation
-                           || animationEvent == 'addClass'
-                           || animationEvent == 'removeClass'
-                           || animationEvent == 'animate';
-
-        var currentClassName = element.attr('class');
-        var classes = currentClassName + ' ' + className;
-        if (!isAnimatableClassName(classes)) {
-          return;
-        }
-
-        var beforeComplete = noop,
-            beforeCancel = [],
-            before = [],
-            afterComplete = noop,
-            afterCancel = [],
-            after = [];
-
-        var animationLookup = (' ' + classes).replace(/\s+/g,'.');
-        forEach(lookup(animationLookup), function(animationFactory) {
-          var created = registerAnimation(animationFactory, animationEvent);
-          if (!created && isSetClassOperation) {
-            registerAnimation(animationFactory, 'addClass');
-            registerAnimation(animationFactory, 'removeClass');
-          }
-        });
-
-        function registerAnimation(animationFactory, event) {
-          var afterFn = animationFactory[event];
-          var beforeFn = animationFactory['before' + event.charAt(0).toUpperCase() + event.substr(1)];
-          if (afterFn || beforeFn) {
-            if (event == 'leave') {
-              beforeFn = afterFn;
-              //when set as null then animation knows to skip this phase
-              afterFn = null;
-            }
-            after.push({
-              event: event, fn: afterFn
-            });
-            before.push({
-              event: event, fn: beforeFn
-            });
-            return true;
-          }
-        }
-
-        function run(fns, cancellations, allCompleteFn) {
-          var animations = [];
-          forEach(fns, function(animation) {
-            animation.fn && animations.push(animation);
-          });
-
-          var count = 0;
-          function afterAnimationComplete(index) {
-            if (cancellations) {
-              (cancellations[index] || noop)();
-              if (++count < animations.length) return;
-              cancellations = null;
-            }
-            allCompleteFn();
-          }
-
-          //The code below adds directly to the array in order to work with
-          //both sync and async animations. Sync animations are when the done()
-          //operation is called right away. DO NOT REFACTOR!
-          forEach(animations, function(animation, index) {
-            var progress = function() {
-              afterAnimationComplete(index);
-            };
-            switch (animation.event) {
-              case 'setClass':
-                cancellations.push(animation.fn(element, classNameAdd, classNameRemove, progress, options));
-                break;
-              case 'animate':
-                cancellations.push(animation.fn(element, className, options.from, options.to, progress));
-                break;
-              case 'addClass':
-                cancellations.push(animation.fn(element, classNameAdd || className,     progress, options));
-                break;
-              case 'removeClass':
-                cancellations.push(animation.fn(element, classNameRemove || className,  progress, options));
-                break;
-              default:
-                cancellations.push(animation.fn(element, progress, options));
-                break;
-            }
-          });
-
-          if (cancellations && cancellations.length === 0) {
-            allCompleteFn();
-          }
-        }
-
-        return {
-          node: node,
-          event: animationEvent,
-          className: className,
-          isClassBased: isClassBased,
-          isSetClassOperation: isSetClassOperation,
-          applyStyles: function() {
-            if (options) {
-              element.css(angular.extend(options.from || {}, options.to || {}));
-            }
-          },
-          before: function(allCompleteFn) {
-            beforeComplete = allCompleteFn;
-            run(before, beforeCancel, function() {
-              beforeComplete = noop;
-              allCompleteFn();
-            });
-          },
-          after: function(allCompleteFn) {
-            afterComplete = allCompleteFn;
-            run(after, afterCancel, function() {
-              afterComplete = noop;
-              allCompleteFn();
-            });
-          },
-          cancel: function() {
-            if (beforeCancel) {
-              forEach(beforeCancel, function(cancelFn) {
-                (cancelFn || noop)(true);
-              });
-              beforeComplete(true);
-            }
-            if (afterCancel) {
-              forEach(afterCancel, function(cancelFn) {
-                (cancelFn || noop)(true);
-              });
-              afterComplete(true);
-            }
-          }
-        };
-      }
-
-      /**
-       * @ngdoc service
-       * @name $animate
-       * @kind object
-       *
-       * @description
-       * The `$animate` service provides animation detection support while performing DOM operations (enter, leave and move) as well as during addClass and removeClass operations.
-       * When any of these operations are run, the $animate service
-       * will examine any JavaScript-defined animations (which are defined by using the $animateProvider provider object)
-       * as well as any CSS-defined animations against the CSS classes present on the element once the DOM operation is run.
-       *
-       * The `$animate` service is used behind the scenes with pre-existing directives and animation with these directives
-       * will work out of the box without any extra configuration.
-       *
-       * Requires the {@link ngAnimate `ngAnimate`} module to be installed.
-       *
-       * Please visit the {@link ngAnimate `ngAnimate`} module overview page learn more about how to use animations in your application.
-       * ## Callback Promises
-       * With AngularJS 1.3, each of the animation methods, on the `$animate` service, return a promise when called. The
-       * promise itself is then resolved once the animation has completed itself, has been cancelled or has been
-       * skipped due to animations being disabled. (Note that even if the animation is cancelled it will still
-       * call the resolve function of the animation.)
-       *
-       * ```js
-       * $animate.enter(element, container).then(function() {
-       *   //...this is called once the animation is complete...
-       * });
-       * ```
-       *
-       * Also note that, due to the nature of the callback promise, if any Angular-specific code (like changing the scope,
-       * location of the page, etc...) is executed within the callback promise then be sure to wrap the code using
-       * `$scope.$apply(...)`;
-       *
-       * ```js
-       * $animate.leave(element).then(function() {
-       *   $scope.$apply(function() {
-       *     $location.path('/new-page');
-       *   });
-       * });
-       * ```
-       *
-       * An animation can also be cancelled by calling the `$animate.cancel(promise)` method with the provided
-       * promise that was returned when the animation was started.
-       *
-       * ```js
-       * var promise = $animate.addClass(element, 'super-long-animation');
-       * promise.then(function() {
-       *   //this will still be called even if cancelled
-       * });
-       *
-       * element.on('click', function() {
-       *   //tooo lazy to wait for the animation to end
-       *   $animate.cancel(promise);
-       * });
-       * ```
-       *
-       * (Keep in mind that the promise cancellation is unique to `$animate` since promises in
-       * general cannot be cancelled.)
-       *
-       */
-      return {
-        /**
-         * @ngdoc method
-         * @name $animate#animate
-         * @kind function
-         *
-         * @description
-         * Performs an inline animation on the element which applies the provided `to` and `from` CSS styles to the element.
-         * If any detected CSS transition, keyframe or JavaScript matches the provided `className` value then the animation
-         * will take on the provided styles. For example, if a transition animation is set for the given className then the
-         * provided `from` and `to` styles will be applied alongside the given transition. If a JavaScript animation is
-         * detected then the provided styles will be given in as function paramters.
-         *
-         * ```js
-         * ngModule.animation('.my-inline-animation', function() {
-         *   return {
-         *     animate : function(element, className, from, to, done) {
-         *       //styles
-         *     }
-         *   }
-         * });
-         * ```
-         *
-         * Below is a breakdown of each step that occurs during the `animate` animation:
-         *
-         * | Animation Step                                                                                                        | What the element class attribute looks like                  |
-         * |-----------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------|
-         * | 1. `$animate.animate(...)` is called                                                                                  | `class="my-animation"`                                       |
-         * | 2. `$animate` waits for the next digest to start the animation                                                        | `class="my-animation ng-animate"`                            |
-         * | 3. `$animate` runs the JavaScript-defined animations detected on the element                                          | `class="my-animation ng-animate"`                            |
-         * | 4. the `className` class value is added to the element                                                                | `class="my-animation ng-animate className"`                  |
-         * | 5. `$animate` scans the element styles to get the CSS transition/animation duration and delay                         | `class="my-animation ng-animate className"`                  |
-         * | 6. `$animate` blocks all CSS transitions on the element to ensure the `.className` class styling is applied right away| `class="my-animation ng-animate className"`                  |
-         * | 7. `$animate` applies the provided collection of `from` CSS styles to the element                                     | `class="my-animation ng-animate className"`                  |
-         * | 8. `$animate` waits for a single animation frame (this performs a reflow)                                             | `class="my-animation ng-animate className"`                  |
-         * | 9. `$animate` removes the CSS transition block placed on the element                                                  | `class="my-animation ng-animate className"`                  |
-         * | 10. the `className-active` class is added (this triggers the CSS transition/animation)                                | `class="my-animation ng-animate className className-active"` |
-         * | 11. `$animate` applies the collection of `to` CSS styles to the element which are then handled by the transition      | `class="my-animation ng-animate className className-active"` |
-         * | 12. `$animate` waits for the animation to complete (via events and timeout)                                           | `class="my-animation ng-animate className className-active"` |
-         * | 13. The animation ends and all generated CSS classes are removed from the element                                     | `class="my-animation"`                                       |
-         * | 14. The returned promise is resolved.                                                                                 | `class="my-animation"`                                       |
-         *
-         * @param {DOMElement} element the element that will be the focus of the enter animation
-         * @param {object} from a collection of CSS styles that will be applied to the element at the start of the animation
-         * @param {object} to a collection of CSS styles that the element will animate towards
-         * @param {string=} className an optional CSS class that will be added to the element for the duration of the animation (the default class is `ng-inline-animate`)
-         * @param {object=} options an optional collection of options that will be picked up by the CSS transition/animation
-         * @return {Promise} the animation callback promise
-        */
-        animate: function(element, from, to, className, options) {
-          className = className || 'ng-inline-animate';
-          options = parseAnimateOptions(options) || {};
-          options.from = to ? from : null;
-          options.to   = to ? to : from;
-
-          return runAnimationPostDigest(function(done) {
-            return performAnimation('animate', className, stripCommentsFromElement(element), null, null, noop, options, done);
-          });
-        },
-
-        /**
-         * @ngdoc method
-         * @name $animate#enter
-         * @kind function
-         *
-         * @description
-         * Appends the element to the parentElement element that resides in the document and then runs the enter animation. Once
-         * the animation is started, the following CSS classes will be present on the element for the duration of the animation:
-         *
-         * Below is a breakdown of each step that occurs during enter animation:
-         *
-         * | Animation Step                                                                                                        | What the element class attribute looks like                |
-         * |-----------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
-         * | 1. `$animate.enter(...)` is called                                                                                    | `class="my-animation"`                                     |
-         * | 2. element is inserted into the `parentElement` element or beside the `afterElement` element                          | `class="my-animation"`                                     |
-         * | 3. `$animate` waits for the next digest to start the animation                                                        | `class="my-animation ng-animate"`                          |
-         * | 4. `$animate` runs the JavaScript-defined animations detected on the element                                          | `class="my-animation ng-animate"`                          |
-         * | 5. the `.ng-enter` class is added to the element                                                                      | `class="my-animation ng-animate ng-enter"`                 |
-         * | 6. `$animate` scans the element styles to get the CSS transition/animation duration and delay                         | `class="my-animation ng-animate ng-enter"`                 |
-         * | 7. `$animate` blocks all CSS transitions on the element to ensure the `.ng-enter` class styling is applied right away | `class="my-animation ng-animate ng-enter"`                 |
-         * | 8. `$animate` waits for a single animation frame (this performs a reflow)                                             | `class="my-animation ng-animate ng-enter"`                 |
-         * | 9. `$animate` removes the CSS transition block placed on the element                                                  | `class="my-animation ng-animate ng-enter"`                 |
-         * | 10. the `.ng-enter-active` class is added (this triggers the CSS transition/animation)                                | `class="my-animation ng-animate ng-enter ng-enter-active"` |
-         * | 11. `$animate` waits for the animation to complete (via events and timeout)                                           | `class="my-animation ng-animate ng-enter ng-enter-active"` |
-         * | 12. The animation ends and all generated CSS classes are removed from the element                                     | `class="my-animation"`                                     |
-         * | 13. The returned promise is resolved.                                                                                 | `class="my-animation"`                                     |
-         *
-         * @param {DOMElement} element the element that will be the focus of the enter animation
-         * @param {DOMElement} parentElement the parent element of the element that will be the focus of the enter animation
-         * @param {DOMElement} afterElement the sibling element (which is the previous element) of the element that will be the focus of the enter animation
-         * @param {object=} options an optional collection of options that will be picked up by the CSS transition/animation
-         * @return {Promise} the animation callback promise
-        */
-        enter: function(element, parentElement, afterElement, options) {
-          options = parseAnimateOptions(options);
-          element = angular.element(element);
-          parentElement = prepareElement(parentElement);
-          afterElement = prepareElement(afterElement);
-
-          classBasedAnimationsBlocked(element, true);
-          $delegate.enter(element, parentElement, afterElement);
-          return runAnimationPostDigest(function(done) {
-            return performAnimation('enter', 'ng-enter', stripCommentsFromElement(element), parentElement, afterElement, noop, options, done);
-          });
-        },
-
-        /**
-         * @ngdoc method
-         * @name $animate#leave
-         * @kind function
-         *
-         * @description
-         * Runs the leave animation operation and, upon completion, removes the element from the DOM. Once
-         * the animation is started, the following CSS classes will be added for the duration of the animation:
-         *
-         * Below is a breakdown of each step that occurs during leave animation:
-         *
-         * | Animation Step                                                                                                        | What the element class attribute looks like                |
-         * |-----------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
-         * | 1. `$animate.leave(...)` is called                                                                                    | `class="my-animation"`                                     |
-         * | 2. `$animate` runs the JavaScript-defined animations detected on the element                                          | `class="my-animation ng-animate"`                          |
-         * | 3. `$animate` waits for the next digest to start the animation                                                        | `class="my-animation ng-animate"`                          |
-         * | 4. the `.ng-leave` class is added to the element                                                                      | `class="my-animation ng-animate ng-leave"`                 |
-         * | 5. `$animate` scans the element styles to get the CSS transition/animation duration and delay                         | `class="my-animation ng-animate ng-leave"`                 |
-         * | 6. `$animate` blocks all CSS transitions on the element to ensure the `.ng-leave` class styling is applied right away | `class="my-animation ng-animate ng-leave"`                 |
-         * | 7. `$animate` waits for a single animation frame (this performs a reflow)                                             | `class="my-animation ng-animate ng-leave"`                 |
-         * | 8. `$animate` removes the CSS transition block placed on the element                                                  | `class="my-animation ng-animate ng-leave"`                 |
-         * | 9. the `.ng-leave-active` class is added (this triggers the CSS transition/animation)                                 | `class="my-animation ng-animate ng-leave ng-leave-active"` |
-         * | 10. `$animate` waits for the animation to complete (via events and timeout)                                           | `class="my-animation ng-animate ng-leave ng-leave-active"` |
-         * | 11. The animation ends and all generated CSS classes are removed from the element                                     | `class="my-animation"`                                     |
-         * | 12. The element is removed from the DOM                                                                               | ...                                                        |
-         * | 13. The returned promise is resolved.                                                                                 | ...                                                        |
-         *
-         * @param {DOMElement} element the element that will be the focus of the leave animation
-         * @param {object=} options an optional collection of styles that will be picked up by the CSS transition/animation
-         * @return {Promise} the animation callback promise
-        */
-        leave: function(element, options) {
-          options = parseAnimateOptions(options);
-          element = angular.element(element);
-
-          cancelChildAnimations(element);
-          classBasedAnimationsBlocked(element, true);
-          return runAnimationPostDigest(function(done) {
-            return performAnimation('leave', 'ng-leave', stripCommentsFromElement(element), null, null, function() {
-              $delegate.leave(element);
-            }, options, done);
-          });
-        },
-
-        /**
-         * @ngdoc method
-         * @name $animate#move
-         * @kind function
-         *
-         * @description
-         * Fires the move DOM operation. Just before the animation starts, the animate service will either append it into the parentElement container or
-         * add the element directly after the afterElement element if present. Then the move animation will be run. Once
-         * the animation is started, the following CSS classes will be added for the duration of the animation:
-         *
-         * Below is a breakdown of each step that occurs during move animation:
-         *
-         * | Animation Step                                                                                                       | What the element class attribute looks like              |
-         * |----------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------|
-         * | 1. `$animate.move(...)` is called                                                                                    | `class="my-animation"`                                   |
-         * | 2. element is moved into the parentElement element or beside the afterElement element                                | `class="my-animation"`                                   |
-         * | 3. `$animate` waits for the next digest to start the animation                                                       | `class="my-animation ng-animate"`                        |
-         * | 4. `$animate` runs the JavaScript-defined animations detected on the element                                         | `class="my-animation ng-animate"`                        |
-         * | 5. the `.ng-move` class is added to the element                                                                      | `class="my-animation ng-animate ng-move"`                |
-         * | 6. `$animate` scans the element styles to get the CSS transition/animation duration and delay                        | `class="my-animation ng-animate ng-move"`                |
-         * | 7. `$animate` blocks all CSS transitions on the element to ensure the `.ng-move` class styling is applied right away | `class="my-animation ng-animate ng-move"`                |
-         * | 8. `$animate` waits for a single animation frame (this performs a reflow)                                            | `class="my-animation ng-animate ng-move"`                |
-         * | 9. `$animate` removes the CSS transition block placed on the element                                                 | `class="my-animation ng-animate ng-move"`                |
-         * | 10. the `.ng-move-active` class is added (this triggers the CSS transition/animation)                                | `class="my-animation ng-animate ng-move ng-move-active"` |
-         * | 11. `$animate` waits for the animation to complete (via events and timeout)                                          | `class="my-animation ng-animate ng-move ng-move-active"` |
-         * | 12. The animation ends and all generated CSS classes are removed from the element                                    | `class="my-animation"`                                   |
-         * | 13. The returned promise is resolved.                                                                                | `class="my-animation"`                                   |
-         *
-         * @param {DOMElement} element the element that will be the focus of the move animation
-         * @param {DOMElement} parentElement the parentElement element of the element that will be the focus of the move animation
-         * @param {DOMElement} afterElement the sibling element (which is the previous element) of the element that will be the focus of the move animation
-         * @param {object=} options an optional collection of styles that will be picked up by the CSS transition/animation
-         * @return {Promise} the animation callback promise
-        */
-        move: function(element, parentElement, afterElement, options) {
-          options = parseAnimateOptions(options);
-          element = angular.element(element);
-          parentElement = prepareElement(parentElement);
-          afterElement = prepareElement(afterElement);
-
-          cancelChildAnimations(element);
-          classBasedAnimationsBlocked(element, true);
-          $delegate.move(element, parentElement, afterElement);
-          return runAnimationPostDigest(function(done) {
-            return performAnimation('move', 'ng-move', stripCommentsFromElement(element), parentElement, afterElement, noop, options, done);
-          });
-        },
-
-        /**
-         * @ngdoc method
-         * @name $animate#addClass
-         *
-         * @description
-         * Triggers a custom animation event based off the className variable and then attaches the className value to the element as a CSS class.
-         * Unlike the other animation methods, the animate service will suffix the className value with {@type -add} in order to provide
-         * the animate service the setup and active CSS classes in order to trigger the animation (this will be skipped if no CSS transitions
-         * or keyframes are defined on the -add-active or base CSS class).
-         *
-         * Below is a breakdown of each step that occurs during addClass animation:
-         *
-         * | Animation Step                                                                                         | What the element class attribute looks like                        |
-         * |--------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------|
-         * | 1. `$animate.addClass(element, 'super')` is called                                                     | `class="my-animation"`                                             |
-         * | 2. `$animate` runs the JavaScript-defined animations detected on the element                           | `class="my-animation ng-animate"`                                  |
-         * | 3. the `.super-add` class is added to the element                                                      | `class="my-animation ng-animate super-add"`                        |
-         * | 4. `$animate` waits for a single animation frame (this performs a reflow)                              | `class="my-animation ng-animate super-add"`                        |
-         * | 5. the `.super` and `.super-add-active` classes are added (this triggers the CSS transition/animation) | `class="my-animation ng-animate super super-add super-add-active"` |
-         * | 6. `$animate` scans the element styles to get the CSS transition/animation duration and delay          | `class="my-animation ng-animate super super-add super-add-active"` |
-         * | 7. `$animate` waits for the animation to complete (via events and timeout)                             | `class="my-animation ng-animate super super-add super-add-active"` |
-         * | 8. The animation ends and all generated CSS classes are removed from the element                       | `class="my-animation super"`                                       |
-         * | 9. The super class is kept on the element                                                              | `class="my-animation super"`                                       |
-         * | 10. The returned promise is resolved.                                                                  | `class="my-animation super"`                                       |
-         *
-         * @param {DOMElement} element the element that will be animated
-         * @param {string} className the CSS class that will be added to the element and then animated
-         * @param {object=} options an optional collection of styles that will be picked up by the CSS transition/animation
-         * @return {Promise} the animation callback promise
-        */
-        addClass: function(element, className, options) {
-          return this.setClass(element, className, [], options);
-        },
-
-        /**
-         * @ngdoc method
-         * @name $animate#removeClass
-         *
-         * @description
-         * Triggers a custom animation event based off the className variable and then removes the CSS class provided by the className value
-         * from the element. Unlike the other animation methods, the animate service will suffix the className value with {@type -remove} in
-         * order to provide the animate service the setup and active CSS classes in order to trigger the animation (this will be skipped if
-         * no CSS transitions or keyframes are defined on the -remove or base CSS classes).
-         *
-         * Below is a breakdown of each step that occurs during removeClass animation:
-         *
-         * | Animation Step                                                                                                       | What the element class attribute looks like                        |
-         * |----------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------|
-         * | 1. `$animate.removeClass(element, 'super')` is called                                                                | `class="my-animation super"`                                       |
-         * | 2. `$animate` runs the JavaScript-defined animations detected on the element                                         | `class="my-animation super ng-animate"`                            |
-         * | 3. the `.super-remove` class is added to the element                                                                 | `class="my-animation super ng-animate super-remove"`               |
-         * | 4. `$animate` waits for a single animation frame (this performs a reflow)                                            | `class="my-animation super ng-animate super-remove"`               |
-         * | 5. the `.super-remove-active` classes are added and `.super` is removed (this triggers the CSS transition/animation) | `class="my-animation ng-animate super-remove super-remove-active"` |
-         * | 6. `$animate` scans the element styles to get the CSS transition/animation duration and delay                        | `class="my-animation ng-animate super-remove super-remove-active"` |
-         * | 7. `$animate` waits for the animation to complete (via events and timeout)                                           | `class="my-animation ng-animate super-remove super-remove-active"` |
-         * | 8. The animation ends and all generated CSS classes are removed from the element                                     | `class="my-animation"`                                             |
-         * | 9. The returned promise is resolved.                                                                                 | `class="my-animation"`                                             |
-         *
-         *
-         * @param {DOMElement} element the element that will be animated
-         * @param {string} className the CSS class that will be animated and then removed from the element
-         * @param {object=} options an optional collection of styles that will be picked up by the CSS transition/animation
-         * @return {Promise} the animation callback promise
-        */
-        removeClass: function(element, className, options) {
-          return this.setClass(element, [], className, options);
-        },
-
-        /**
-         *
-         * @ngdoc method
-         * @name $animate#setClass
-         *
-         * @description Adds and/or removes the given CSS classes to and from the element.
-         * Once complete, the `done()` callback will be fired (if provided).
-         *
-         * | Animation Step                                                                                                                               | What the element class attribute looks like                                            |
-         * |----------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------|
-         * | 1. `$animate.setClass(element, 'on', 'off')` is called                                                                                       | `class="my-animation off"`                                                             |
-         * | 2. `$animate` runs the JavaScript-defined animations detected on the element                                                                 | `class="my-animation ng-animate off"`                                                  |
-         * | 3. the `.on-add` and `.off-remove` classes are added to the element                                                                          | `class="my-animation ng-animate on-add off-remove off"`                                |
-         * | 4. `$animate` waits for a single animation frame (this performs a reflow)                                                                    | `class="my-animation ng-animate on-add off-remove off"`                                |
-         * | 5. the `.on`, `.on-add-active` and `.off-remove-active` classes are added and `.off` is removed (this triggers the CSS transition/animation) | `class="my-animation ng-animate on on-add on-add-active off-remove off-remove-active"` |
-         * | 6. `$animate` scans the element styles to get the CSS transition/animation duration and delay                                                | `class="my-animation ng-animate on on-add on-add-active off-remove off-remove-active"` |
-         * | 7. `$animate` waits for the animation to complete (via events and timeout)                                                                   | `class="my-animation ng-animate on on-add on-add-active off-remove off-remove-active"` |
-         * | 8. The animation ends and all generated CSS classes are removed from the element                                                             | `class="my-animation on"`                                                              |
-         * | 9. The returned promise is resolved.                                                                                                         | `class="my-animation on"`                                                              |
-         *
-         * @param {DOMElement} element the element which will have its CSS classes changed
-         *   removed from it
-         * @param {string} add the CSS classes which will be added to the element
-         * @param {string} remove the CSS class which will be removed from the element
-         *   CSS classes have been set on the element
-         * @param {object=} options an optional collection of styles that will be picked up by the CSS transition/animation
-         * @return {Promise} the animation callback promise
-         */
-        setClass: function(element, add, remove, options) {
-          options = parseAnimateOptions(options);
-
-          var STORAGE_KEY = '$$animateClasses';
-          element = angular.element(element);
-          element = stripCommentsFromElement(element);
-
-          if (classBasedAnimationsBlocked(element)) {
-            return $delegate.$$setClassImmediately(element, add, remove, options);
-          }
-
-          // we're using a combined array for both the add and remove
-          // operations since the ORDER OF addClass and removeClass matters
-          var classes, cache = element.data(STORAGE_KEY);
-          var hasCache = !!cache;
-          if (!cache) {
-            cache = {};
-            cache.classes = {};
-          }
-          classes = cache.classes;
-
-          add = isArray(add) ? add : add.split(' ');
-          forEach(add, function(c) {
-            if (c && c.length) {
-              classes[c] = true;
-            }
-          });
-
-          remove = isArray(remove) ? remove : remove.split(' ');
-          forEach(remove, function(c) {
-            if (c && c.length) {
-              classes[c] = false;
-            }
-          });
-
-          if (hasCache) {
-            if (options && cache.options) {
-              cache.options = angular.extend(cache.options || {}, options);
-            }
-
-            //the digest cycle will combine all the animations into one function
-            return cache.promise;
-          } else {
-            element.data(STORAGE_KEY, cache = {
-              classes: classes,
-              options: options
-            });
-          }
-
-          return cache.promise = runAnimationPostDigest(function(done) {
-            var parentElement = element.parent();
-            var elementNode = extractElementNode(element);
-            var parentNode = elementNode.parentNode;
-            // TODO(matsko): move this code into the animationsDisabled() function once #8092 is fixed
-            if (!parentNode || parentNode['$$NG_REMOVED'] || elementNode['$$NG_REMOVED']) {
-              done();
-              return;
-            }
-
-            var cache = element.data(STORAGE_KEY);
-            element.removeData(STORAGE_KEY);
-
-            var state = element.data(NG_ANIMATE_STATE) || {};
-            var classes = resolveElementClasses(element, cache, state.active);
-            return !classes
-              ? done()
-              : performAnimation('setClass', classes, element, parentElement, null, function() {
-                  if (classes[0]) $delegate.$$addClassImmediately(element, classes[0]);
-                  if (classes[1]) $delegate.$$removeClassImmediately(element, classes[1]);
-                }, cache.options, done);
-          });
-        },
-
-        /**
-         * @ngdoc method
-         * @name $animate#cancel
-         * @kind function
-         *
-         * @param {Promise} animationPromise The animation promise that is returned when an animation is started.
-         *
-         * @description
-         * Cancels the provided animation.
-        */
-        cancel: function(promise) {
-          promise.$$cancelFn();
-        },
-
-        /**
-         * @ngdoc method
-         * @name $animate#enabled
-         * @kind function
-         *
-         * @param {boolean=} value If provided then set the animation on or off.
-         * @param {DOMElement=} element If provided then the element will be used to represent the enable/disable operation
-         * @return {boolean} Current animation state.
-         *
-         * @description
-         * Globally enables/disables animations.
-         *
-        */
-        enabled: function(value, element) {
-          switch (arguments.length) {
-            case 2:
-              if (value) {
-                cleanup(element);
-              } else {
-                var data = element.data(NG_ANIMATE_STATE) || {};
-                data.disabled = true;
-                element.data(NG_ANIMATE_STATE, data);
-              }
-            break;
-
-            case 1:
-              rootAnimateState.disabled = !value;
-            break;
-
-            default:
-              value = !rootAnimateState.disabled;
-            break;
-          }
-          return !!value;
-         }
-      };
-
-      /*
-        all animations call this shared animation triggering function internally.
-        The animationEvent variable refers to the JavaScript animation event that will be triggered
-        and the className value is the name of the animation that will be applied within the
-        CSS code. Element, `parentElement` and `afterElement` are provided DOM elements for the animation
-        and the onComplete callback will be fired once the animation is fully complete.
-      */
-      function performAnimation(animationEvent, className, element, parentElement, afterElement, domOperation, options, doneCallback) {
-        var noopCancel = noop;
-        var runner = animationRunner(element, animationEvent, className, options);
-        if (!runner) {
-          fireDOMOperation();
-          fireBeforeCallbackAsync();
-          fireAfterCallbackAsync();
-          closeAnimation();
-          return noopCancel;
-        }
-
-        animationEvent = runner.event;
-        className = runner.className;
-        var elementEvents = angular.element._data(runner.node);
-        elementEvents = elementEvents && elementEvents.events;
-
-        if (!parentElement) {
-          parentElement = afterElement ? afterElement.parent() : element.parent();
-        }
-
-        //skip the animation if animations are disabled, a parent is already being animated,
-        //the element is not currently attached to the document body or then completely close
-        //the animation if any matching animations are not found at all.
-        //NOTE: IE8 + IE9 should close properly (run closeAnimation()) in case an animation was found.
-        if (animationsDisabled(element, parentElement)) {
-          fireDOMOperation();
-          fireBeforeCallbackAsync();
-          fireAfterCallbackAsync();
-          closeAnimation();
-          return noopCancel;
-        }
-
-        var ngAnimateState  = element.data(NG_ANIMATE_STATE) || {};
-        var runningAnimations     = ngAnimateState.active || {};
-        var totalActiveAnimations = ngAnimateState.totalActive || 0;
-        var lastAnimation         = ngAnimateState.last;
-        var skipAnimation = false;
-
-        if (totalActiveAnimations > 0) {
-          var animationsToCancel = [];
-          if (!runner.isClassBased) {
-            if (animationEvent == 'leave' && runningAnimations['ng-leave']) {
-              skipAnimation = true;
-            } else {
-              //cancel all animations when a structural animation takes place
-              for (var klass in runningAnimations) {
-                animationsToCancel.push(runningAnimations[klass]);
-              }
-              ngAnimateState = {};
-              cleanup(element, true);
-            }
-          } else if (lastAnimation.event == 'setClass') {
-            animationsToCancel.push(lastAnimation);
-            cleanup(element, className);
-          } else if (runningAnimations[className]) {
-            var current = runningAnimations[className];
-            if (current.event == animationEvent) {
-              skipAnimation = true;
-            } else {
-              animationsToCancel.push(current);
-              cleanup(element, className);
-            }
-          }
-
-          if (animationsToCancel.length > 0) {
-            forEach(animationsToCancel, function(operation) {
-              operation.cancel();
-            });
-          }
-        }
-
-        if (runner.isClassBased
-            && !runner.isSetClassOperation
-            && animationEvent != 'animate'
-            && !skipAnimation) {
-          skipAnimation = (animationEvent == 'addClass') == element.hasClass(className); //opposite of XOR
-        }
-
-        if (skipAnimation) {
-          fireDOMOperation();
-          fireBeforeCallbackAsync();
-          fireAfterCallbackAsync();
-          fireDoneCallbackAsync();
-          return noopCancel;
-        }
-
-        runningAnimations     = ngAnimateState.active || {};
-        totalActiveAnimations = ngAnimateState.totalActive || 0;
-
-        if (animationEvent == 'leave') {
-          //there's no need to ever remove the listener since the element
-          //will be removed (destroyed) after the leave animation ends or
-          //is cancelled midway
-          element.one('$destroy', function(e) {
-            var element = angular.element(this);
-            var state = element.data(NG_ANIMATE_STATE);
-            if (state) {
-              var activeLeaveAnimation = state.active['ng-leave'];
-              if (activeLeaveAnimation) {
-                activeLeaveAnimation.cancel();
-                cleanup(element, 'ng-leave');
-              }
-            }
-          });
-        }
-
-        //the ng-animate class does nothing, but it's here to allow for
-        //parent animations to find and cancel child animations when needed
-        $$jqLite.addClass(element, NG_ANIMATE_CLASS_NAME);
-        if (options && options.tempClasses) {
-          forEach(options.tempClasses, function(className) {
-            $$jqLite.addClass(element, className);
-          });
-        }
-
-        var localAnimationCount = globalAnimationCounter++;
-        totalActiveAnimations++;
-        runningAnimations[className] = runner;
-
-        element.data(NG_ANIMATE_STATE, {
-          last: runner,
-          active: runningAnimations,
-          index: localAnimationCount,
-          totalActive: totalActiveAnimations
-        });
-
-        //first we run the before animations and when all of those are complete
-        //then we perform the DOM operation and run the next set of animations
-        fireBeforeCallbackAsync();
-        runner.before(function(cancelled) {
-          var data = element.data(NG_ANIMATE_STATE);
-          cancelled = cancelled ||
-                        !data || !data.active[className] ||
-                        (runner.isClassBased && data.active[className].event != animationEvent);
-
-          fireDOMOperation();
-          if (cancelled === true) {
-            closeAnimation();
-          } else {
-            fireAfterCallbackAsync();
-            runner.after(closeAnimation);
-          }
-        });
-
-        return runner.cancel;
-
-        function fireDOMCallback(animationPhase) {
-          var eventName = '$animate:' + animationPhase;
-          if (elementEvents && elementEvents[eventName] && elementEvents[eventName].length > 0) {
-            $$asyncCallback(function() {
-              element.triggerHandler(eventName, {
-                event: animationEvent,
-                className: className
-              });
-            });
-          }
-        }
-
-        function fireBeforeCallbackAsync() {
-          fireDOMCallback('before');
-        }
-
-        function fireAfterCallbackAsync() {
-          fireDOMCallback('after');
-        }
-
-        function fireDoneCallbackAsync() {
-          fireDOMCallback('close');
-          doneCallback();
-        }
-
-        //it is less complicated to use a flag than managing and canceling
-        //timeouts containing multiple callbacks.
-        function fireDOMOperation() {
-          if (!fireDOMOperation.hasBeenRun) {
-            fireDOMOperation.hasBeenRun = true;
-            domOperation();
-          }
-        }
-
-        function closeAnimation() {
-          if (!closeAnimation.hasBeenRun) {
-            if (runner) { //the runner doesn't exist if it fails to instantiate
-              runner.applyStyles();
-            }
-
-            closeAnimation.hasBeenRun = true;
-            if (options && options.tempClasses) {
-              forEach(options.tempClasses, function(className) {
-                $$jqLite.removeClass(element, className);
-              });
-            }
-
-            var data = element.data(NG_ANIMATE_STATE);
-            if (data) {
-
-              /* only structural animations wait for reflow before removing an
-                 animation, but class-based animations don't. An example of this
-                 failing would be when a parent HTML tag has a ng-class attribute
-                 causing ALL directives below to skip animations during the digest */
-              if (runner && runner.isClassBased) {
-                cleanup(element, className);
-              } else {
-                $$asyncCallback(function() {
-                  var data = element.data(NG_ANIMATE_STATE) || {};
-                  if (localAnimationCount == data.index) {
-                    cleanup(element, className, animationEvent);
-                  }
-                });
-                element.data(NG_ANIMATE_STATE, data);
-              }
-            }
-            fireDoneCallbackAsync();
-          }
-        }
-      }
-
-      function cancelChildAnimations(element) {
-        var node = extractElementNode(element);
-        if (node) {
-          var nodes = angular.isFunction(node.getElementsByClassName) ?
-            node.getElementsByClassName(NG_ANIMATE_CLASS_NAME) :
-            node.querySelectorAll('.' + NG_ANIMATE_CLASS_NAME);
-          forEach(nodes, function(element) {
-            element = angular.element(element);
-            var data = element.data(NG_ANIMATE_STATE);
-            if (data && data.active) {
-              forEach(data.active, function(runner) {
-                runner.cancel();
-              });
-            }
-          });
-        }
-      }
-
-      function cleanup(element, className) {
-        if (isMatchingElement(element, $rootElement)) {
-          if (!rootAnimateState.disabled) {
-            rootAnimateState.running = false;
-            rootAnimateState.structural = false;
-          }
-        } else if (className) {
-          var data = element.data(NG_ANIMATE_STATE) || {};
-
-          var removeAnimations = className === true;
-          if (!removeAnimations && data.active && data.active[className]) {
-            data.totalActive--;
-            delete data.active[className];
-          }
-
-          if (removeAnimations || !data.totalActive) {
-            $$jqLite.removeClass(element, NG_ANIMATE_CLASS_NAME);
-            element.removeData(NG_ANIMATE_STATE);
-          }
-        }
-      }
-
-      function animationsDisabled(element, parentElement) {
-        if (rootAnimateState.disabled) {
-          return true;
-        }
-
-        if (isMatchingElement(element, $rootElement)) {
-          return rootAnimateState.running;
-        }
-
-        var allowChildAnimations, parentRunningAnimation, hasParent;
-        do {
-          //the element did not reach the root element which means that it
-          //is not apart of the DOM. Therefore there is no reason to do
-          //any animations on it
-          if (parentElement.length === 0) break;
-
-          var isRoot = isMatchingElement(parentElement, $rootElement);
-          var state = isRoot ? rootAnimateState : (parentElement.data(NG_ANIMATE_STATE) || {});
-          if (state.disabled) {
-            return true;
-          }
-
-          //no matter what, for an animation to work it must reach the root element
-          //this implies that the element is attached to the DOM when the animation is run
-          if (isRoot) {
-            hasParent = true;
-          }
-
-          //once a flag is found that is strictly false then everything before
-          //it will be discarded and all child animations will be restricted
-          if (allowChildAnimations !== false) {
-            var animateChildrenFlag = parentElement.data(NG_ANIMATE_CHILDREN);
-            if (angular.isDefined(animateChildrenFlag)) {
-              allowChildAnimations = animateChildrenFlag;
-            }
-          }
-
-          parentRunningAnimation = parentRunningAnimation ||
-                                   state.running ||
-                                   (state.last && !state.last.isClassBased);
-        }
-        while (parentElement = parentElement.parent());
-
-        return !hasParent || (!allowChildAnimations && parentRunningAnimation);
-      }
-    }]);
-
-    $animateProvider.register('', ['$window', '$sniffer', '$timeout', '$$animateReflow',
-                           function($window,   $sniffer,   $timeout,   $$animateReflow) {
-      // Detect proper transitionend/animationend event names.
-      var CSS_PREFIX = '', TRANSITION_PROP, TRANSITIONEND_EVENT, ANIMATION_PROP, ANIMATIONEND_EVENT;
-
-      // If unprefixed events are not supported but webkit-prefixed are, use the latter.
-      // Otherwise, just use W3C names, browsers not supporting them at all will just ignore them.
-      // Note: Chrome implements `window.onwebkitanimationend` and doesn't implement `window.onanimationend`
-      // but at the same time dispatches the `animationend` event and not `webkitAnimationEnd`.
-      // Register both events in case `window.onanimationend` is not supported because of that,
-      // do the same for `transitionend` as Safari is likely to exhibit similar behavior.
-      // Also, the only modern browser that uses vendor prefixes for transitions/keyframes is webkit
-      // therefore there is no reason to test anymore for other vendor prefixes: http://caniuse.com/#search=transition
-      if (window.ontransitionend === undefined && window.onwebkittransitionend !== undefined) {
-        CSS_PREFIX = '-webkit-';
-        TRANSITION_PROP = 'WebkitTransition';
-        TRANSITIONEND_EVENT = 'webkitTransitionEnd transitionend';
-      } else {
-        TRANSITION_PROP = 'transition';
-        TRANSITIONEND_EVENT = 'transitionend';
-      }
-
-      if (window.onanimationend === undefined && window.onwebkitanimationend !== undefined) {
-        CSS_PREFIX = '-webkit-';
-        ANIMATION_PROP = 'WebkitAnimation';
-        ANIMATIONEND_EVENT = 'webkitAnimationEnd animationend';
-      } else {
-        ANIMATION_PROP = 'animation';
-        ANIMATIONEND_EVENT = 'animationend';
-      }
-
-      var DURATION_KEY = 'Duration';
-      var PROPERTY_KEY = 'Property';
-      var DELAY_KEY = 'Delay';
-      var ANIMATION_ITERATION_COUNT_KEY = 'IterationCount';
-      var ANIMATION_PLAYSTATE_KEY = 'PlayState';
-      var NG_ANIMATE_PARENT_KEY = '$$ngAnimateKey';
-      var NG_ANIMATE_CSS_DATA_KEY = '$$ngAnimateCSS3Data';
-      var ELAPSED_TIME_MAX_DECIMAL_PLACES = 3;
-      var CLOSING_TIME_BUFFER = 1.5;
-      var ONE_SECOND = 1000;
-
-      var lookupCache = {};
-      var parentCounter = 0;
-      var animationReflowQueue = [];
-      var cancelAnimationReflow;
-      function clearCacheAfterReflow() {
-        if (!cancelAnimationReflow) {
-          cancelAnimationReflow = $$animateReflow(function() {
-            animationReflowQueue = [];
-            cancelAnimationReflow = null;
-            lookupCache = {};
-          });
-        }
-      }
-
-      function afterReflow(element, callback) {
-        if (cancelAnimationReflow) {
-          cancelAnimationReflow();
-        }
-        animationReflowQueue.push(callback);
-        cancelAnimationReflow = $$animateReflow(function() {
-          forEach(animationReflowQueue, function(fn) {
-            fn();
-          });
-
-          animationReflowQueue = [];
-          cancelAnimationReflow = null;
-          lookupCache = {};
-        });
-      }
-
-      var closingTimer = null;
-      var closingTimestamp = 0;
-      var animationElementQueue = [];
-      function animationCloseHandler(element, totalTime) {
-        var node = extractElementNode(element);
-        element = angular.element(node);
-
-        //this item will be garbage collected by the closing
-        //animation timeout
-        animationElementQueue.push(element);
-
-        //but it may not need to cancel out the existing timeout
-        //if the timestamp is less than the previous one
-        var futureTimestamp = Date.now() + totalTime;
-        if (futureTimestamp <= closingTimestamp) {
-          return;
-        }
-
-        $timeout.cancel(closingTimer);
-
-        closingTimestamp = futureTimestamp;
-        closingTimer = $timeout(function() {
-          closeAllAnimations(animationElementQueue);
-          animationElementQueue = [];
-        }, totalTime, false);
-      }
-
-      function closeAllAnimations(elements) {
-        forEach(elements, function(element) {
-          var elementData = element.data(NG_ANIMATE_CSS_DATA_KEY);
-          if (elementData) {
-            forEach(elementData.closeAnimationFns, function(fn) {
-              fn();
-            });
-          }
-        });
-      }
-
-      function getElementAnimationDetails(element, cacheKey) {
-        var data = cacheKey ? lookupCache[cacheKey] : null;
-        if (!data) {
-          var transitionDuration = 0;
-          var transitionDelay = 0;
-          var animationDuration = 0;
-          var animationDelay = 0;
-
-          //we want all the styles defined before and after
-          forEach(element, function(element) {
-            if (element.nodeType == ELEMENT_NODE) {
-              var elementStyles = $window.getComputedStyle(element) || {};
-
-              var transitionDurationStyle = elementStyles[TRANSITION_PROP + DURATION_KEY];
-              transitionDuration = Math.max(parseMaxTime(transitionDurationStyle), transitionDuration);
-
-              var transitionDelayStyle = elementStyles[TRANSITION_PROP + DELAY_KEY];
-              transitionDelay  = Math.max(parseMaxTime(transitionDelayStyle), transitionDelay);
-
-              var animationDelayStyle = elementStyles[ANIMATION_PROP + DELAY_KEY];
-              animationDelay   = Math.max(parseMaxTime(elementStyles[ANIMATION_PROP + DELAY_KEY]), animationDelay);
-
-              var aDuration  = parseMaxTime(elementStyles[ANIMATION_PROP + DURATION_KEY]);
-
-              if (aDuration > 0) {
-                aDuration *= parseInt(elementStyles[ANIMATION_PROP + ANIMATION_ITERATION_COUNT_KEY], 10) || 1;
-              }
-              animationDuration = Math.max(aDuration, animationDuration);
-            }
-          });
-          data = {
-            total: 0,
-            transitionDelay: transitionDelay,
-            transitionDuration: transitionDuration,
-            animationDelay: animationDelay,
-            animationDuration: animationDuration
-          };
-          if (cacheKey) {
-            lookupCache[cacheKey] = data;
-          }
-        }
-        return data;
-      }
-
-      function parseMaxTime(str) {
-        var maxValue = 0;
-        var values = isString(str) ?
-          str.split(/\s*,\s*/) :
-          [];
-        forEach(values, function(value) {
-          maxValue = Math.max(parseFloat(value) || 0, maxValue);
-        });
-        return maxValue;
-      }
-
-      function getCacheKey(element) {
-        var parentElement = element.parent();
-        var parentID = parentElement.data(NG_ANIMATE_PARENT_KEY);
-        if (!parentID) {
-          parentElement.data(NG_ANIMATE_PARENT_KEY, ++parentCounter);
-          parentID = parentCounter;
-        }
-        return parentID + '-' + extractElementNode(element).getAttribute('class');
-      }
-
-      function animateSetup(animationEvent, element, className, styles) {
-        var structural = ['ng-enter','ng-leave','ng-move'].indexOf(className) >= 0;
-
-        var cacheKey = getCacheKey(element);
-        var eventCacheKey = cacheKey + ' ' + className;
-        var itemIndex = lookupCache[eventCacheKey] ? ++lookupCache[eventCacheKey].total : 0;
-
-        var stagger = {};
-        if (itemIndex > 0) {
-          var staggerClassName = className + '-stagger';
-          var staggerCacheKey = cacheKey + ' ' + staggerClassName;
-          var applyClasses = !lookupCache[staggerCacheKey];
-
-          applyClasses && $$jqLite.addClass(element, staggerClassName);
-
-          stagger = getElementAnimationDetails(element, staggerCacheKey);
-
-          applyClasses && $$jqLite.removeClass(element, staggerClassName);
-        }
-
-        $$jqLite.addClass(element, className);
-
-        var formerData = element.data(NG_ANIMATE_CSS_DATA_KEY) || {};
-        var timings = getElementAnimationDetails(element, eventCacheKey);
-        var transitionDuration = timings.transitionDuration;
-        var animationDuration = timings.animationDuration;
-
-        if (structural && transitionDuration === 0 && animationDuration === 0) {
-          $$jqLite.removeClass(element, className);
-          return false;
-        }
-
-        var blockTransition = styles || (structural && transitionDuration > 0);
-        var blockAnimation = animationDuration > 0 &&
-                             stagger.animationDelay > 0 &&
-                             stagger.animationDuration === 0;
-
-        var closeAnimationFns = formerData.closeAnimationFns || [];
-        element.data(NG_ANIMATE_CSS_DATA_KEY, {
-          stagger: stagger,
-          cacheKey: eventCacheKey,
-          running: formerData.running || 0,
-          itemIndex: itemIndex,
-          blockTransition: blockTransition,
-          closeAnimationFns: closeAnimationFns
-        });
-
-        var node = extractElementNode(element);
-
-        if (blockTransition) {
-          blockTransitions(node, true);
-          if (styles) {
-            element.css(styles);
-          }
-        }
-
-        if (blockAnimation) {
-          blockAnimations(node, true);
-        }
-
-        return true;
-      }
-
-      function animateRun(animationEvent, element, className, activeAnimationComplete, styles) {
-        var node = extractElementNode(element);
-        var elementData = element.data(NG_ANIMATE_CSS_DATA_KEY);
-        if (node.getAttribute('class').indexOf(className) == -1 || !elementData) {
-          activeAnimationComplete();
-          return;
-        }
-
-        var activeClassName = '';
-        var pendingClassName = '';
-        forEach(className.split(' '), function(klass, i) {
-          var prefix = (i > 0 ? ' ' : '') + klass;
-          activeClassName += prefix + '-active';
-          pendingClassName += prefix + '-pending';
-        });
-
-        var style = '';
-        var appliedStyles = [];
-        var itemIndex = elementData.itemIndex;
-        var stagger = elementData.stagger;
-        var staggerTime = 0;
-        if (itemIndex > 0) {
-          var transitionStaggerDelay = 0;
-          if (stagger.transitionDelay > 0 && stagger.transitionDuration === 0) {
-            transitionStaggerDelay = stagger.transitionDelay * itemIndex;
-          }
-
-          var animationStaggerDelay = 0;
-          if (stagger.animationDelay > 0 && stagger.animationDuration === 0) {
-            animationStaggerDelay = stagger.animationDelay * itemIndex;
-            appliedStyles.push(CSS_PREFIX + 'animation-play-state');
-          }
-
-          staggerTime = Math.round(Math.max(transitionStaggerDelay, animationStaggerDelay) * 100) / 100;
-        }
-
-        if (!staggerTime) {
-          $$jqLite.addClass(element, activeClassName);
-          if (elementData.blockTransition) {
-            blockTransitions(node, false);
-          }
-        }
-
-        var eventCacheKey = elementData.cacheKey + ' ' + activeClassName;
-        var timings = getElementAnimationDetails(element, eventCacheKey);
-        var maxDuration = Math.max(timings.transitionDuration, timings.animationDuration);
-        if (maxDuration === 0) {
-          $$jqLite.removeClass(element, activeClassName);
-          animateClose(element, className);
-          activeAnimationComplete();
-          return;
-        }
-
-        if (!staggerTime && styles && Object.keys(styles).length > 0) {
-          if (!timings.transitionDuration) {
-            element.css('transition', timings.animationDuration + 's linear all');
-            appliedStyles.push('transition');
-          }
-          element.css(styles);
-        }
-
-        var maxDelay = Math.max(timings.transitionDelay, timings.animationDelay);
-        var maxDelayTime = maxDelay * ONE_SECOND;
-
-        if (appliedStyles.length > 0) {
-          //the element being animated may sometimes contain comment nodes in
-          //the jqLite object, so we're safe to use a single variable to house
-          //the styles since there is always only one element being animated
-          var oldStyle = node.getAttribute('style') || '';
-          if (oldStyle.charAt(oldStyle.length - 1) !== ';') {
-            oldStyle += ';';
-          }
-          node.setAttribute('style', oldStyle + ' ' + style);
-        }
-
-        var startTime = Date.now();
-        var css3AnimationEvents = ANIMATIONEND_EVENT + ' ' + TRANSITIONEND_EVENT;
-        var animationTime     = (maxDelay + maxDuration) * CLOSING_TIME_BUFFER;
-        var totalTime         = (staggerTime + animationTime) * ONE_SECOND;
-
-        var staggerTimeout;
-        if (staggerTime > 0) {
-          $$jqLite.addClass(element, pendingClassName);
-          staggerTimeout = $timeout(function() {
-            staggerTimeout = null;
-
-            if (timings.transitionDuration > 0) {
-              blockTransitions(node, false);
-            }
-            if (timings.animationDuration > 0) {
-              blockAnimations(node, false);
-            }
-
-            $$jqLite.addClass(element, activeClassName);
-            $$jqLite.removeClass(element, pendingClassName);
-
-            if (styles) {
-              if (timings.transitionDuration === 0) {
-                element.css('transition', timings.animationDuration + 's linear all');
-              }
-              element.css(styles);
-              appliedStyles.push('transition');
-            }
-          }, staggerTime * ONE_SECOND, false);
-        }
-
-        element.on(css3AnimationEvents, onAnimationProgress);
-        elementData.closeAnimationFns.push(function() {
-          onEnd();
-          activeAnimationComplete();
-        });
-
-        elementData.running++;
-        animationCloseHandler(element, totalTime);
-        return onEnd;
-
-        // This will automatically be called by $animate so
-        // there is no need to attach this internally to the
-        // timeout done method.
-        function onEnd() {
-          element.off(css3AnimationEvents, onAnimationProgress);
-          $$jqLite.removeClass(element, activeClassName);
-          $$jqLite.removeClass(element, pendingClassName);
-          if (staggerTimeout) {
-            $timeout.cancel(staggerTimeout);
-          }
-          animateClose(element, className);
-          var node = extractElementNode(element);
-          for (var i in appliedStyles) {
-            node.style.removeProperty(appliedStyles[i]);
-          }
-        }
-
-        function onAnimationProgress(event) {
-          event.stopPropagation();
-          var ev = event.originalEvent || event;
-          var timeStamp = ev.$manualTimeStamp || ev.timeStamp || Date.now();
-
-          /* Firefox (or possibly just Gecko) likes to not round values up
-           * when a ms measurement is used for the animation */
-          var elapsedTime = parseFloat(ev.elapsedTime.toFixed(ELAPSED_TIME_MAX_DECIMAL_PLACES));
-
-          /* $manualTimeStamp is a mocked timeStamp value which is set
-           * within browserTrigger(). This is only here so that tests can
-           * mock animations properly. Real events fallback to event.timeStamp,
-           * or, if they don't, then a timeStamp is automatically created for them.
-           * We're checking to see if the timeStamp surpasses the expected delay,
-           * but we're using elapsedTime instead of the timeStamp on the 2nd
-           * pre-condition since animations sometimes close off early */
-          if (Math.max(timeStamp - startTime, 0) >= maxDelayTime && elapsedTime >= maxDuration) {
-            activeAnimationComplete();
-          }
-        }
-      }
-
-      function blockTransitions(node, bool) {
-        node.style[TRANSITION_PROP + PROPERTY_KEY] = bool ? 'none' : '';
-      }
-
-      function blockAnimations(node, bool) {
-        node.style[ANIMATION_PROP + ANIMATION_PLAYSTATE_KEY] = bool ? 'paused' : '';
-      }
-
-      function animateBefore(animationEvent, element, className, styles) {
-        if (animateSetup(animationEvent, element, className, styles)) {
-          return function(cancelled) {
-            cancelled && animateClose(element, className);
-          };
-        }
-      }
-
-      function animateAfter(animationEvent, element, className, afterAnimationComplete, styles) {
-        if (element.data(NG_ANIMATE_CSS_DATA_KEY)) {
-          return animateRun(animationEvent, element, className, afterAnimationComplete, styles);
-        } else {
-          animateClose(element, className);
-          afterAnimationComplete();
-        }
-      }
-
-      function animate(animationEvent, element, className, animationComplete, options) {
-        //If the animateSetup function doesn't bother returning a
-        //cancellation function then it means that there is no animation
-        //to perform at all
-        var preReflowCancellation = animateBefore(animationEvent, element, className, options.from);
-        if (!preReflowCancellation) {
-          clearCacheAfterReflow();
-          animationComplete();
-          return;
-        }
-
-        //There are two cancellation functions: one is before the first
-        //reflow animation and the second is during the active state
-        //animation. The first function will take care of removing the
-        //data from the element which will not make the 2nd animation
-        //happen in the first place
-        var cancel = preReflowCancellation;
-        afterReflow(element, function() {
-          //once the reflow is complete then we point cancel to
-          //the new cancellation function which will remove all of the
-          //animation properties from the active animation
-          cancel = animateAfter(animationEvent, element, className, animationComplete, options.to);
-        });
-
-        return function(cancelled) {
-          (cancel || noop)(cancelled);
-        };
-      }
-
-      function animateClose(element, className) {
-        $$jqLite.removeClass(element, className);
-        var data = element.data(NG_ANIMATE_CSS_DATA_KEY);
-        if (data) {
-          if (data.running) {
-            data.running--;
-          }
-          if (!data.running || data.running === 0) {
-            element.removeData(NG_ANIMATE_CSS_DATA_KEY);
-          }
-        }
-      }
-
-      return {
-        animate: function(element, className, from, to, animationCompleted, options) {
-          options = options || {};
-          options.from = from;
-          options.to = to;
-          return animate('animate', element, className, animationCompleted, options);
-        },
-
-        enter: function(element, animationCompleted, options) {
-          options = options || {};
-          return animate('enter', element, 'ng-enter', animationCompleted, options);
-        },
-
-        leave: function(element, animationCompleted, options) {
-          options = options || {};
-          return animate('leave', element, 'ng-leave', animationCompleted, options);
-        },
-
-        move: function(element, animationCompleted, options) {
-          options = options || {};
-          return animate('move', element, 'ng-move', animationCompleted, options);
-        },
-
-        beforeSetClass: function(element, add, remove, animationCompleted, options) {
-          options = options || {};
-          var className = suffixClasses(remove, '-remove') + ' ' +
-                          suffixClasses(add, '-add');
-          var cancellationMethod = animateBefore('setClass', element, className, options.from);
-          if (cancellationMethod) {
-            afterReflow(element, animationCompleted);
-            return cancellationMethod;
-          }
-          clearCacheAfterReflow();
-          animationCompleted();
-        },
-
-        beforeAddClass: function(element, className, animationCompleted, options) {
-          options = options || {};
-          var cancellationMethod = animateBefore('addClass', element, suffixClasses(className, '-add'), options.from);
-          if (cancellationMethod) {
-            afterReflow(element, animationCompleted);
-            return cancellationMethod;
-          }
-          clearCacheAfterReflow();
-          animationCompleted();
-        },
-
-        beforeRemoveClass: function(element, className, animationCompleted, options) {
-          options = options || {};
-          var cancellationMethod = animateBefore('removeClass', element, suffixClasses(className, '-remove'), options.from);
-          if (cancellationMethod) {
-            afterReflow(element, animationCompleted);
-            return cancellationMethod;
-          }
-          clearCacheAfterReflow();
-          animationCompleted();
-        },
-
-        setClass: function(element, add, remove, animationCompleted, options) {
-          options = options || {};
-          remove = suffixClasses(remove, '-remove');
-          add = suffixClasses(add, '-add');
-          var className = remove + ' ' + add;
-          return animateAfter('setClass', element, className, animationCompleted, options.to);
-        },
-
-        addClass: function(element, className, animationCompleted, options) {
-          options = options || {};
-          return animateAfter('addClass', element, suffixClasses(className, '-add'), animationCompleted, options.to);
-        },
-
-        removeClass: function(element, className, animationCompleted, options) {
-          options = options || {};
-          return animateAfter('removeClass', element, suffixClasses(className, '-remove'), animationCompleted, options.to);
-        }
-      };
-
-      function suffixClasses(classes, suffix) {
-        var className = '';
-        classes = isArray(classes) ? classes : classes.split(/\s+/);
-        forEach(classes, function(klass, i) {
-          if (klass && klass.length > 0) {
-            className += (i > 0 ? ' ' : '') + klass + suffix;
-          }
-        });
-        return className;
-      }
-    }]);
-  }]);
+/**
+ * @ngdoc service
+ * @name $animate
+ * @kind object
+ *
+ * @description
+ * The ngAnimate `$animate` service documentation is the same for the core `$animate` service.
+ *
+ * Click here {@link ng.$animate $animate to learn more about animations with `$animate`}.
+ */
+angular.module('ngAnimate', [])
+  .directive('ngAnimateChildren', $$AnimateChildrenDirective)
+
+  .factory('$$rAFMutex', $$rAFMutexFactory)
+  .factory('$$rAFScheduler', $$rAFSchedulerFactory)
+
+  .factory('$$AnimateRunner', $$AnimateRunnerFactory)
+
+  .provider('$$animateQueue', $$AnimateQueueProvider)
+  .provider('$$animation', $$AnimationProvider)
+
+  .provider('$animateCss', $AnimateCssProvider)
+  .provider('$$animateCssDriver', $$AnimateCssDriverProvider)
+
+  .provider('$$animateJs', $$AnimateJsProvider)
+  .provider('$$animateJsDriver', $$AnimateJsDriverProvider);
 
 
 })(window, window.angular);
 ;/**
  * State-based routing for AngularJS
- * @version v0.2.14
+ * @version v0.2.15
  * @link http://angular-ui.github.com/
  * @license MIT License, http://www.opensource.org/licenses/MIT
  */
@@ -51431,15 +55456,14 @@ function $UrlMatcherFactory() {
 
   function valToString(val) { return val != null ? val.toString().replace(/\//g, "%2F") : val; }
   function valFromString(val) { return val != null ? val.toString().replace(/%2F/g, "/") : val; }
-//  TODO: in 1.0, make string .is() return false if value is undefined by default.
-//  function regexpMatches(val) { /*jshint validthis:true */ return isDefined(val) && this.pattern.test(val); }
-  function regexpMatches(val) { /*jshint validthis:true */ return this.pattern.test(val); }
 
   var $types = {}, enqueue = true, typeQueue = [], injector, defaultTypes = {
     string: {
       encode: valToString,
       decode: valFromString,
-      is: function(val) { return typeof val === "string"; },
+      // TODO: in 1.0, make string .is() return false if value is undefined/null by default.
+      // In 0.2.x, string params are optional by default for backwards compat
+      is: function(val) { return val == null || !isDefined(val) || typeof val === "string"; },
       pattern: /[^/]*/
     },
     int: {
@@ -51483,7 +55507,6 @@ function $UrlMatcherFactory() {
     any: { // does not encode/decode
       encode: angular.identity,
       decode: angular.identity,
-      is: angular.identity,
       equals: angular.equals,
       pattern: /.*/
     }
@@ -52192,7 +56215,8 @@ function $UrlRouterProvider(   $locationProvider,   $urlMatcherFactory) {
       if (evt && evt.defaultPrevented) return;
       var ignoreUpdate = lastPushedUrl && $location.url() === lastPushedUrl;
       lastPushedUrl = undefined;
-      if (ignoreUpdate) return true;
+      // TODO: Re-implement this in 1.0 for https://github.com/angular-ui/ui-router/issues/1573
+      //if (ignoreUpdate) return true;
 
       function check(rule) {
         var handled = rule($injector, $location);
@@ -53294,7 +57318,7 @@ function $StateProvider(   $urlRouterProvider,   $urlMatcherFactory) {
      *    have not changed, aka a reload of the same state. It differs from reloadOnSearch because you'd
      *    use this when you want to force a reload when *everything* is the same, including search params.
      *    if String, then will reload the state with the name given in reload, and any children.
-     *    if Object, then a stateObj is expected, will reload the state found in stateObj, and any chhildren.
+     *    if Object, then a stateObj is expected, will reload the state found in stateObj, and any children.
      *
      * @returns {promise} A promise representing the state of the new transition. See
      * {@link ui.router.state.$state#methods_go $state.go}.
@@ -53342,7 +57366,6 @@ function $StateProvider(   $urlRouterProvider,   $urlMatcherFactory) {
 
       // Starting from the root of the path, keep all levels that haven't changed
       var keep = 0, state = toPath[keep], locals = root.locals, toLocals = [];
-      var skipTriggerReloadCheck = false;
 
       if (!options.reload) {
         while (state && state === fromPath[keep] && state.ownParams.$$equals(toParams, fromParams)) {
@@ -53360,8 +57383,6 @@ function $StateProvider(   $urlRouterProvider,   $urlMatcherFactory) {
           throw new Error("No such reload state '" + (isString(options.reload) ? options.reload : options.reload.name) + "'");
         }
 
-        skipTriggerReloadCheck = true;
- 
         while (state && state === fromPath[keep] && state !== reloadState) {
           locals = toLocals[keep] = state.locals;
           keep++;
@@ -53374,8 +57395,16 @@ function $StateProvider(   $urlRouterProvider,   $urlMatcherFactory) {
       // TODO: We may not want to bump 'transition' if we're called from a location change
       // that we've initiated ourselves, because we might accidentally abort a legitimate
       // transition initiated from code?
-      if (!skipTriggerReloadCheck && shouldTriggerReload(to, from, locals, options)) {
-        if (to.self.reloadOnSearch !== false) $urlRouter.update();
+      if (shouldSkipReload(to, toParams, from, fromParams, locals, options)) {
+        if (hash) toParams['#'] = hash;
+        $state.params = toParams;
+        copy($state.params, $stateParams);
+        if (options.location && to.navigable && to.navigable.url) {
+          $urlRouter.push(to.navigable.url, toParams, {
+            $$avoidResync: true, replace: options.location === 'replace'
+          });
+          $urlRouter.update(true);
+        }
         $state.transition = null;
         return $q.when($state.current);
       }
@@ -53730,30 +57759,38 @@ function $StateProvider(   $urlRouterProvider,   $urlMatcherFactory) {
       })];
       if (inherited) promises.push(inherited);
 
-      // Resolve template and dependencies for all views.
-      forEach(state.views, function (view, name) {
-        var injectables = (view.resolve && view.resolve !== state.resolve ? view.resolve : {});
-        injectables.$template = [ function () {
-          return $view.load(name, { view: view, locals: locals, params: $stateParams, notify: options.notify }) || '';
-        }];
+      function resolveViews() {
+        var viewsPromises = [];
 
-        promises.push($resolve.resolve(injectables, locals, dst.resolve, state).then(function (result) {
-          // References to the controller (only instantiated at link time)
-          if (isFunction(view.controllerProvider) || isArray(view.controllerProvider)) {
-            var injectLocals = angular.extend({}, injectables, locals, result);
-            result.$$controller = $injector.invoke(view.controllerProvider, null, injectLocals);
-          } else {
-            result.$$controller = view.controller;
-          }
-          // Provide access to the state itself for internal use
-          result.$$state = state;
-          result.$$controllerAs = view.controllerAs;
-          dst[name] = result;
-        }));
-      });
+        // Resolve template and dependencies for all views.
+        forEach(state.views, function (view, name) {
+          var injectables = (view.resolve && view.resolve !== state.resolve ? view.resolve : {});
+          injectables.$template = [ function () {
+            return $view.load(name, { view: view, locals: dst.globals, params: $stateParams, notify: options.notify }) || '';
+          }];
+
+          viewsPromises.push($resolve.resolve(injectables, dst.globals, dst.resolve, state).then(function (result) {
+            // References to the controller (only instantiated at link time)
+            if (isFunction(view.controllerProvider) || isArray(view.controllerProvider)) {
+              var injectLocals = angular.extend({}, injectables, dst.globals);
+              result.$$controller = $injector.invoke(view.controllerProvider, null, injectLocals);
+            } else {
+              result.$$controller = view.controller;
+            }
+            // Provide access to the state itself for internal use
+            result.$$state = state;
+            result.$$controllerAs = view.controllerAs;
+            dst[name] = result;
+          }));
+        });
+
+        return $q.all(viewsPromises).then(function(){
+          return dst.globals;
+        });
+      }
 
       // Wait for all the promises and then return the activation object
-      return $q.all(promises).then(function (values) {
+      return $q.all(promises).then(resolveViews).then(function (values) {
         return dst;
       });
     }
@@ -53761,8 +57798,27 @@ function $StateProvider(   $urlRouterProvider,   $urlMatcherFactory) {
     return $state;
   }
 
-  function shouldTriggerReload(to, from, locals, options) {
-    if (to === from && ((locals === from.locals && !options.reload) || (to.self.reloadOnSearch === false))) {
+  function shouldSkipReload(to, toParams, from, fromParams, locals, options) {
+    // Return true if there are no differences in non-search (path/object) params, false if there are differences
+    function nonSearchParamsEqual(fromAndToState, fromParams, toParams) {
+      // Identify whether all the parameters that differ between `fromParams` and `toParams` were search params.
+      function notSearchParam(key) {
+        return fromAndToState.params[key].location != "search";
+      }
+      var nonQueryParamKeys = fromAndToState.params.$$keys().filter(notSearchParam);
+      var nonQueryParams = pick.apply({}, [fromAndToState.params].concat(nonQueryParamKeys));
+      var nonQueryParamSet = new $$UMFP.ParamSet(nonQueryParams);
+      return nonQueryParamSet.$$equals(fromParams, toParams);
+    }
+
+    // If reload was not explicitly requested
+    // and we're transitioning to the same state we're already in
+    // and    the locals didn't change
+    //     or they changed in a way that doesn't merit reloading
+    //        (reloadOnParams:false, or reloadOnSearch.false and only search params changed)
+    // Then return true.
+    if (!options.reload && to === from &&
+      (locals === from.locals || (to.self.reloadOnSearch === false && nonSearchParamsEqual(from, fromParams, toParams)))) {
       return true;
     }
   }
@@ -54527,7 +58583,7 @@ angular.module('ui.router.state')
   .filter('isState', $IsStateFilter)
   .filter('includedByState', $IncludedByStateFilter);
 })(window, window.angular);;/**
- * @license AngularJS v1.3.15
+ * @license AngularJS v1.3.16
  * (c) 2010-2014 Google, Inc. http://angularjs.org
  * License: MIT
  */
@@ -80583,6 +84639,7 @@ angular.module('ui.ace', [])
 
         opt.indent_size = options.indent_size ? parseInt(options.indent_size, 10) : 4;
         opt.indent_char = options.indent_char ? options.indent_char : ' ';
+        opt.eol = options.eol ? options.eol : '\n';
         opt.preserve_newlines = (options.preserve_newlines === undefined) ? true : options.preserve_newlines;
         opt.break_chained_methods = (options.break_chained_methods === undefined) ? false : options.break_chained_methods;
         opt.max_preserve_newlines = (options.max_preserve_newlines === undefined) ? 0 : parseInt(options.max_preserve_newlines, 10);
@@ -80608,6 +84665,8 @@ angular.module('ui.ace', [])
             opt.indent_char = '\t';
             opt.indent_size = 1;
         }
+
+        opt.eol = opt.eol.replace(/\\r/, '\r').replace(/\\n/, '\n')
 
         //----------------------------------
         indent_string = '';
@@ -80671,6 +84730,10 @@ angular.module('ui.ace', [])
             sweet_code = output.get_code();
             if (opt.end_with_newline) {
                 sweet_code += '\n';
+            }
+
+            if (opt.eol != '\n') {
+                sweet_code = sweet_code.replace(/[\r]?[\n]/mg, opt.eol);
             }
 
             return sweet_code;
@@ -80836,6 +84899,7 @@ angular.module('ui.ace', [])
                     (last_type === 'TK_WORD' && flags.mode === MODE.BlockStatement
                         && !flags.in_case
                         && !(current_token.text === '--' || current_token.text === '++')
+                        && last_last_text !== 'function'
                         && current_token.type !== 'TK_WORD' && current_token.type !== 'TK_RESERVED') ||
                     (flags.mode === MODE.ObjectLiteral && (
                         (flags.last_text === ':' && flags.ternary_depth === 0) || (last_type === 'TK_RESERVED' && in_array(flags.last_text, ['get', 'set']))))
@@ -80957,6 +85021,11 @@ angular.module('ui.ace', [])
                 if (opt.space_before_conditional) {
                     output.space_before_token = true;
                 }
+            }
+
+            // Should be a space between await and an IIFE
+            if(current_token.text === '(' && last_type === 'TK_RESERVED' && flags.last_word === 'await'){
+                output.space_before_token = true;
             }
 
             // Support of this kind of newline preservation.
@@ -81180,7 +85249,7 @@ angular.module('ui.ace', [])
                     }
                 }
                 if (last_type === 'TK_RESERVED' || last_type === 'TK_WORD') {
-                    if (last_type === 'TK_RESERVED' && in_array(flags.last_text, ['get', 'set', 'new', 'return', 'export'])) {
+                    if (last_type === 'TK_RESERVED' && in_array(flags.last_text, ['get', 'set', 'new', 'return', 'export', 'async'])) {
                         output.space_before_token = true;
                     } else if (last_type === 'TK_RESERVED' && flags.last_text === 'default' && last_last_text === 'export') {
                         output.space_before_token = true;
@@ -81789,7 +85858,7 @@ angular.module('ui.ace', [])
 
         // words which should always start on new line.
         this.line_starters = 'continue,try,throw,return,var,let,const,if,switch,case,default,for,while,break,function,import,export'.split(',');
-        var reserved_words = this.line_starters.concat(['do', 'in', 'else', 'get', 'set', 'new', 'catch', 'finally', 'typeof', 'yield']);
+        var reserved_words = this.line_starters.concat(['do', 'in', 'else', 'get', 'set', 'new', 'catch', 'finally', 'typeof', 'yield', 'async', 'await']);
 
         var n_newlines, whitespace_before_token, in_html_comment, tokens, parser_pos;
         var input_length;
@@ -81824,13 +85893,13 @@ angular.module('ui.ace', [])
 
                 if (next.type === 'TK_START_BLOCK' || next.type === 'TK_START_EXPR') {
                     next.parent = last;
+                    open_stack.push(open);
                     open = next;
-                    open_stack.push(next);
                 }  else if ((next.type === 'TK_END_BLOCK' || next.type === 'TK_END_EXPR') &&
                     (open && (
                         (next.text === ']' && open.text === '[') ||
                         (next.text === ')' && open.text === '(') ||
-                        (next.text === '}' && open.text === '}')))) {
+                        (next.text === '}' && open.text === '{')))) {
                     next.parent = open.parent;
                     open = open_stack.pop();
                 }
@@ -82023,7 +86092,7 @@ angular.module('ui.ace', [])
             if (c === '`' || c === "'" || c === '"' || // string
                 (
                     (c === '/') || // regexp
-                    (opts.e4x && c === "<" && input.slice(parser_pos - 1).match(/^<([-a-zA-Z:0-9_.]+|{[^{}]*}|!\[CDATA\[[\s\S]*?\]\])\s*([-a-zA-Z:0-9_.]+=('[^']*'|"[^"]*"|{[^{}]*})\s*)*\/?\s*>/)) // xml
+                    (opts.e4x && c === "<" && input.slice(parser_pos - 1).match(/^<([-a-zA-Z:0-9_.]+|{[^{}]*}|!\[CDATA\[[\s\S]*?\]\])(\s+[-a-zA-Z:0-9_.]+\s*=\s*('[^']*'|"[^"]*"|{.*?}))*\s*(\/?)\s*>/)) // xml
                 ) && ( // regex and xml can only appear in specific locations during parsing
                     (last_token.type === 'TK_RESERVED' && in_array(last_token.text , ['return', 'case', 'throw', 'else', 'do', 'typeof', 'yield'])) ||
                     (last_token.type === 'TK_END_EXPR' && last_token.text === ')' &&
@@ -82064,7 +86133,7 @@ angular.module('ui.ace', [])
                     //
                     // handle e4x xml literals
                     //
-                    var xmlRegExp = /<(\/?)([-a-zA-Z:0-9_.]+|{[^{}]*}|!\[CDATA\[[\s\S]*?\]\])\s*([-a-zA-Z:0-9_.]+=('[^']*'|"[^"]*"|{[^{}]*})\s*)*(\/?)\s*>/g;
+                    var xmlRegExp = /<(\/?)([-a-zA-Z:0-9_.]+|{[^{}]*}|!\[CDATA\[[\s\S]*?\]\])(\s+[-a-zA-Z:0-9_.]+\s*=\s*('[^']*'|"[^"]*"|{.*?}))*\s*(\/?)\s*>/g;
                     var xmlStr = input.slice(parser_pos - 1);
                     var match = xmlRegExp.exec(xmlStr);
                     if (match && match.index === 0) {
@@ -82087,8 +86156,9 @@ angular.module('ui.ace', [])
                             match = xmlRegExp.exec(xmlStr);
                         }
                         var xmlLength = match ? match.index + match[0].length : xmlStr.length;
+                        xmlStr = xmlStr.slice(0, xmlLength);
                         parser_pos += xmlLength - 1;
-                        return [xmlStr.slice(0, xmlLength), "TK_STRING"];
+                        return [xmlStr, "TK_STRING"];
                     }
                 } else {
                     //
@@ -82100,6 +86170,11 @@ angular.module('ui.ace', [])
                             (esc || (input.charAt(parser_pos) !== sep &&
                             (sep === '`' || !acorn.newline.test(input.charAt(parser_pos)))))) {
                         resulting_string += input.charAt(parser_pos);
+                        // Handle \r\n linebreaks after escapes or in template strings
+                        if (input.charAt(parser_pos) === '\r' && input.charAt(parser_pos + 1) === '\n') {
+                            parser_pos += 1;
+                            resulting_string += '\n';
+                        }
                         if (esc) {
                             if (input.charAt(parser_pos) === 'x' || input.charAt(parser_pos) === 'u') {
                                 has_char_escapes = true;
@@ -82375,6 +86450,10 @@ angular.module('ui.ace', [])
             indentSize = parseInt(indentSize, 10);
         }
 
+        if(options.indent_with_tabs){
+            indentCharacter = '\t';
+            indentSize = 1;
+        }
 
         // tokenizer
         var whiteRe = /^\s+$/;
@@ -82390,6 +86469,7 @@ angular.module('ui.ace', [])
         }
 
         function peek(skipWhitespace) {
+            var result = '';
             var prev_pos = pos;
             if (skipWhitespace) {
                 eatWhitespace();
@@ -82512,15 +86592,16 @@ angular.module('ui.ace', [])
         };
 
         print.newLine = function(keepWhitespace) {
-            if (!keepWhitespace) {
-                print.trim();
-            }
-
             if (output.length) {
+                if (!keepWhitespace && output[output.length - 1] !== '\n') {
+                    print.trim();
+                }
+
                 output.push('\n');
-            }
-            if (basebaseIndentString) {
-                output.push(basebaseIndentString);
+
+                if (basebaseIndentString) {
+                    output.push(basebaseIndentString);
+                }
             }
         };
         print.singleSpace = function() {
@@ -82537,9 +86618,6 @@ angular.module('ui.ace', [])
 
 
         var output = [];
-        if (basebaseIndentString) {
-            output.push(basebaseIndentString);
-        }
         /*_____________________--------------------_____________________*/
 
         var insideRule = false;
@@ -82557,15 +86635,19 @@ angular.module('ui.ace', [])
             if (!ch) {
                 break;
             } else if (ch === '/' && peek() === '*') { /* css comment */
-                var header = lookBack("");
-                print.newLine();
+                var header = indentLevel === 0;
+
+                if (isAfterNewline || header) {
+                    print.newLine();
+                }
+
                 output.push(eatComment());
                 print.newLine();
                 if (header) {
                     print.newLine(true);
                 }
             } else if (ch === '/' && peek() === '/') { // single line comment
-                if (!isAfterNewline && last_top_ch !== '{') {
+                if (!isAfterNewline && last_top_ch !== '{' ) {
                     print.trim();
                 }
                 print.singleSpace();
@@ -82579,7 +86661,17 @@ angular.module('ui.ace', [])
                 output.push(ch);
 
                 // strip trailing space, if present, for hash property checks
-                var variableOrRule = peekString(": ,;{}()[]/='\"").replace(/\s$/, '');
+                var variableOrRule = peekString(": ,;{}()[]/='\"");
+
+                if (variableOrRule.match(/[ :]$/)) {
+                    // we have a variable or pseudo-class, add it and insert one space before continuing
+                    next();
+                    variableOrRule = eatString(": ").replace(/\s$/, '');
+                    output.push(variableOrRule);
+                    print.singleSpace();
+                }
+
+                variableOrRule = variableOrRule.replace(/\s$/, '')
 
                 // might be a nesting at-rule
                 if (variableOrRule in css_beautify.NESTED_AT_RULE) {
@@ -82587,12 +86679,6 @@ angular.module('ui.ace', [])
                     if (variableOrRule in css_beautify.CONDITIONAL_GROUP_RULE) {
                         enteringConditionalGroup = true;
                     }
-                } else if (': '.indexOf(variableOrRule[variableOrRule.length - 1]) >= 0) {
-                    //we have a variable, add it and insert one space before continuing
-                    next();
-                    variableOrRule = eatString(": ").replace(/\s$/, '');
-                    output.push(variableOrRule);
-                    print.singleSpace();
                 }
             } else if (ch === '{') {
                 if (peek(true) === '}') {
@@ -82705,7 +86791,12 @@ angular.module('ui.ace', [])
         }
 
 
-        var sweetCode = output.join('').replace(/[\r\n\t ]+$/, '');
+        var sweetCode = '';
+        if (basebaseIndentString) {
+            sweetCode += basebaseIndentString;
+        }
+
+        sweetCode += output.join('').replace(/[\r\n\t ]+$/, '');
 
         // establish end_with_newline
         if (end_with_newline) {
@@ -82807,7 +86898,7 @@ angular.module('ui.ace', [])
     max_preserve_newlines (default unlimited) - maximum number of line breaks to be preserved in one chunk
     indent_handlebars (default false) - format and indent {{#foo}} and {{/foo}}
     end_with_newline (false)          - end with a newline
-
+    extra_liners (default [head,body,/html]) -List of tags that should have an extra newline before them.
 
     e.g.
 
@@ -82820,7 +86911,8 @@ angular.module('ui.ace', [])
       'unformatted': ['a', 'sub', 'sup', 'b', 'i', 'u'],
       'preserve_newlines': true,
       'max_preserve_newlines': 5,
-      'indent_handlebars': false
+      'indent_handlebars': false,
+      'extra_liners': ['/html']
     });
 */
 
@@ -82853,7 +86945,8 @@ angular.module('ui.ace', [])
             indent_handlebars,
             wrap_attributes,
             wrap_attributes_indent_size,
-            end_with_newline;
+            end_with_newline,
+            extra_liners;
 
         options = options || {};
 
@@ -82877,6 +86970,14 @@ angular.module('ui.ace', [])
         wrap_attributes = (options.wrap_attributes === undefined) ? 'auto' : options.wrap_attributes;
         wrap_attributes_indent_size = (options.wrap_attributes_indent_size === undefined) ? indent_size : parseInt(options.wrap_attributes_indent_size, 10) || indent_size;
         end_with_newline = (options.end_with_newline === undefined) ? false : options.end_with_newline;
+        extra_liners = Array.isArray(options.extra_liners) ?
+            options.extra_liners.concat() : (typeof options.extra_liners === 'string') ?
+            options.extra_liners.split(',') : 'head,body,/html'.split(',');
+
+        if(options.indent_with_tabs){
+            indent_character = '\t';
+            indent_size = 1;
+        }
 
         function Parser() {
 
@@ -82895,8 +86996,8 @@ angular.module('ui.ace', [])
 
             this.Utils = { //Uilities made available to the various functions
                 whitespace: "\n\r\t ".split(''),
-                single_token: 'br,input,link,meta,!doctype,basefont,base,area,hr,wbr,param,img,isindex,?xml,embed,?php,?,?='.split(','), //all the single tags for HTML
-                extra_liners: 'head,body,/html'.split(','), //for tags that need a line of whitespace before them
+                single_token: 'br,input,link,meta,source,!doctype,basefont,base,area,hr,wbr,param,img,isindex,?xml,embed,?php,?,?='.split(','), //all the single tags for HTML
+                extra_liners: extra_liners, //for tags that need a line of whitespace before them
                 in_array: function(what, arr) {
                     for (var i = 0; i < arr.length; i++) {
                         if (what === arr[i]) {
@@ -82907,8 +87008,7 @@ angular.module('ui.ace', [])
                 }
             };
 
-            // Return true iff the given text is composed entirely of
-            // whitespace.
+            // Return true if the given text is composed entirely of whitespace.
             this.is_whitespace = function(text) {
                 for (var n = 0; n < text.length; text++) {
                     if (!this.Utils.in_array(text.charAt(n), this.Utils.whitespace)) {
@@ -82973,6 +87073,8 @@ angular.module('ui.ace', [])
                         if (peek3 === '{{#' || peek3 === '{{/') {
                             // These are tags and not content.
                             break;
+                        } else if (peek3 === '{{!') {
+                            return [this.get_tag(), 'TK_TAG_HANDLEBARS_COMMENT'];
                         } else if (this.input.substr(this.pos, 2) === '{{') {
                             if (this.get_tag(true) === '{{else}}') {
                                 break;
@@ -83135,7 +87237,7 @@ angular.module('ui.ace', [])
 
                     if (indent_handlebars && !tag_start_char) {
                         if (content.length >= 2 && content[content.length - 1] === '{' && content[content.length - 2] === '{') {
-                            if (input_char === '#' || input_char === '/') {
+                            if (input_char === '#' || input_char === '/' || input_char === '!') {
                                 tag_start = this.pos - 3;
                             } else {
                                 tag_start = this.pos - 2;
@@ -83148,6 +87250,13 @@ angular.module('ui.ace', [])
                     content.push(input_char); //inserts character at-a-time (or string)
 
                     if (content[1] && content[1] === '!') { //if we're in a comment, do something special
+                        // We treat all comments as literals, even more than preformatted tags
+                        // we just look for the appropriate close tag
+                        content = [this.get_comment(tag_start)];
+                        break;
+                    }
+
+                    if (indent_handlebars && content[1] && content[1] === '{' && content[2] && content[2] === '!') { //if we're in a comment, do something special
                         // We treat all comments as literals, even more than preformatted tags
                         // we just look for the appropriate close tag
                         content = [this.get_comment(tag_start)];
@@ -83279,6 +87388,9 @@ angular.module('ui.ace', [])
                             matched = true;
                         } else if (comment.indexOf('<!--') === 0) { // <!-- comment ...
                             delimiter = '-->';
+                            matched = true;
+                        } else if (comment.indexOf('{{!') === 0) { // {{! handlebars comment
+                            delimiter = '}}';
                             matched = true;
                         }
                     }
@@ -83554,6 +87666,10 @@ angular.module('ui.ace', [])
                         multi_parser.indent_content = false;
                     }
                     multi_parser.current_mode = 'CONTENT';
+                    break;
+                case 'TK_TAG_HANDLEBARS_COMMENT':
+                    multi_parser.print_token(multi_parser.token_text);
+                    multi_parser.current_mode = 'TAG';
                     break;
                 case 'TK_CONTENT':
                     multi_parser.print_token(multi_parser.token_text);
@@ -87263,6 +91379,7 @@ angular.module('angularSails.io', [])
  */
 
     .provider('$sailsSocket', function () {
+        var _debug = false;
 
         var _socketDefaults = {
             autoConnect: true,
@@ -87354,11 +91471,11 @@ angular.module('angularSails.io', [])
 
                 // Name of socket request listener on the server
                 // ( === the request method, e.g. 'get', 'post', 'put', etc. )
-                var sailsEndpoint = requestCtx.method;
+                var sailsEndpoint = requestCtx.method.toLowerCase();
 
 
                 socket.emit(sailsEndpoint, requestCtx, tick(socket, function serverResponded(responseCtx) {
-                    console.log(responseCtx)
+                    if (_debug) console.log(responseCtx)
 
                     var serverResponse = new SailsResponse(requestCtx, responseCtx);
 
@@ -87383,10 +91500,11 @@ angular.module('angularSails.io', [])
 
                 self._requestQueue = []
 
-                self._socketOptions = options || {}
+                self._socketOptions = angular.extend({}, _socketDefaults, options);
 
                 self._socket = new TmpSocket();
 
+                if (self._socketOptions.autoConnect) self.connect();
             };
 
             SailsSocket.prototype.connect = function (url, opts) {
@@ -87421,6 +91539,7 @@ angular.module('angularSails.io', [])
                 self._socket.once('connect', connection.resolve);
                 self._socket.on('connecting', connection.notify);
                 self._socket.once('connect_failed', connection.reject);
+                self.connection = connection;
 
                 return connection.promise;
 
@@ -87428,7 +91547,7 @@ angular.module('angularSails.io', [])
 
             SailsSocket.prototype.isConnected = function () {
 
-                return this._socket.socket.connected;
+                return this.connection && this.connection.promise.$$state.status === 1;
 
             }
 
@@ -87499,7 +91618,7 @@ angular.module('angularSails.io', [])
 
                 response.promise.success = function (fn) {
                     response.promise.then(function (response) {
-                        console.log(response)
+                      if (_debug) console.log(response)
                       fn(response.data, response.statusCode, response.headers, request);
                     });
                     return response.promise;
@@ -89045,9 +93164,28 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
         templateUrl: 'right-sidenav'
         , controller: 'RightSidenavController'
       }
-      , 'footer' : {
-        templateUrl: 'footer'
-        , controller: 'FooterController'
+    }
+  })
+  .state('layout.vwheritage', {
+    url: '/vwheritage'
+    , resolve: {
+      authenticated: authenticated,
+      products: function(VWHeritageService) {
+        return VWHeritageService.resolveCatalogProductList();
+      }
+    }
+    , views: {
+      'content' : {
+        templateUrl: 'vwheritage/content'
+        , controller: 'VWHeritageContentController'
+      }
+      , 'left-sidenav' : {
+        templateUrl: 'left-sidenav'
+        , controller: 'LeftSidenavController'
+      }
+      , 'right-sidenav' : {
+        templateUrl: 'right-sidenav'
+        , controller: 'RightSidenavController'
       }
     }
   })
@@ -89066,88 +93204,8 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
         templateUrl: 'right-sidenav'
         , controller: 'RightSidenavController'
       }
-      , 'footer' : {
-        templateUrl: 'footer'
-        , controller: 'FooterController'
-      }
     }
   })
-  // ADMIN
-  // .state('layout.administration', {
-  //   url: '/admin'
-  //   , resolve:{
-  //     themeSettings: function($sailsSocket) {
-  //       return $sailsSocket.get('/theme/find').then (function (data) {
-  //         console.log(data);
-  //         return data.data;
-  //       });
-  //     }
-  //   }
-  //   , views: {
-  //     'content' : {
-  //       templateUrl: 'administration/settings'
-  //       , controller: 'AdminController'
-  //     }
-  //     , 'left-sidenav' : {
-  //       templateUrl: 'left-sidenav'
-  //       , controller: 'LeftSidenavController'
-  //     }
-  //   }
-  // })
-  // .state('layout.users', {
-  //   url: '/users'
-  //   , resolve:{
-  //     users: function($sailsSocket) {
-  //       return $sailsSocket.get('/user').then (function (data) {
-  //         return data.data;
-  //       });
-  //     }
-  //   }
-  //   , views: {
-  //     'content' : {
-  //       templateUrl: 'administration/users'
-  //       , controller: 'UsersController'
-  //     }
-  //     , 'left-sidenav' : {
-  //       templateUrl: 'left-sidenav'
-  //       , controller: 'LeftSidenavController'
-  //     }
-  //   }
-  // })
-  // .state('layout.user', {
-  //   url: '/user/:index'
-  //   , resolve:{
-  //     user: function($sailsSocket, $stateParams) {
-  //       return $sailsSocket.get('/user'+'/'+$stateParams.index).then (function (data) {
-  //         delete data.data.password;
-  //         return data.data;
-  //       });
-  //     }
-  //   }
-  //   , views: {
-  //     'content' : {
-  //       templateUrl: 'administration/user'
-  //       , controller: 'UserController'
-  //     }
-  //     , 'left-sidenav' : {
-  //       templateUrl: 'left-sidenav'
-  //       , controller: 'LeftSidenavController'
-  //     }
-  //   }
-  // })
-  // .state('layout.new-user', {
-  //   url: '/new/user'
-  //   , views: {
-  //     'content' : {
-  //       templateUrl: 'administration/user'
-  //       , controller: 'UserNewController'
-  //     }
-  //     , 'left-sidenav' : {
-  //       templateUrl: 'left-sidenav'
-  //       , controller: 'LeftSidenavController'
-  //     }
-  //   }
-  // })
 })
 .run(function ($rootScope, $state, $window, $log) {
   $rootScope.$on('$stateChangeError', function (event, toState, toParams, fromState, fromParams, error) {
@@ -89158,17 +93216,7 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
 ;;jumplink.cms.run(function(amMoment) {
   amMoment.changeLocale('de');
 });
-;jumplink.cms.service('historyService', function ($window) {
-  var back = function () {
-    $window.history.back();
-  }
-
-  return {
-    back: back
-  };
-});
-
-jumplink.cms.service('eventService', function (moment) {
+;jumplink.cms.service('EventService', function (moment) {
 
   var split = function(events) {
     var unknown = [], before = [], after = [];
@@ -89205,32 +93253,83 @@ jumplink.cms.service('eventService', function (moment) {
     split: split
     , merge: merge
   };
-});
+});;jumplink.cms.service('HistoryService', function ($window) {
+  var back = function () {
+    $window.history.back();
+  }
 
-jumplink.cms.service('$async', function () {
+  return {
+    back: back
+  };
+});;jumplink.cms.service('ThemeService', function ($rootScope, $sailsSocket, $log, $async) {
+  var isSubscribed = false;
 
-  // https://github.com/caolan/async/issues/374#issuecomment-27498818
-  async.objectMap = function ( obj, func, cb ) {
-    var i, arr = [], keys = Object.keys( obj );
-    for ( i = 0; i < keys.length; i += 1 ) {
-      var wrapper = {};
-      wrapper[keys[i]] = obj[keys[i]];
-      arr[i] = wrapper;
+  var save = function (themes, callback) {
+    updateOrCreateEach(themes, function (err, result) {
+      if(angular.isDefined(callback)) callback(err, result);
+    });
+  }
+  
+  var updateOrCreateEach = function(themes, callback) {
+    $log.debug(themes);
+    // $sailsSocket.put('/Theme/updateOrCreateEach', themes).success(function(data, status, headers, config) {
+    //   $log.debug(data, status, headers, config);
+    //   if(angular.isDefined(callback)) callback(data, status, headers, config)
+    // });
+    var iterator = function (theme, cb) {
+      $sailsSocket.put('/Theme/updateOrCreate', theme).success(function(data, status, headers, config) {
+        $log.debug(data, status, headers, config);
+        // TODO set error
+        
+      });
     }
-    this.map( arr, func, function( err, data ) {
-      if ( err ) { return cb( err ); }
-      var res = {};
-      for ( i = 0; i < data.length; i += 1 ) {
-          res[keys[i]] = data[i];
-      }
-      return cb( err, res );
+    $async.each(themes, iterator, callback)
+    $sailsSocket.put('/Theme/updateOrCreateEach', themes).success(function(data, status, headers, config) {
+      $log.debug(data, status, headers, config);
+      callback(data, status, headers, config)
     });
   }
 
-  return async;
-});
+  // TODO
+  var subscribe = function () {
+    if(!isSubscribed) {
+      $sailsSocket.subscribe('theme', function(msg){
+        if($rootScope.authenticated)
+          $log.debug(msg);
+        switch(msg.verb) {
+          case 'updated':
+            if($rootScope.authenticated)
+              $rootScope.pop('success', 'Themeeinstellungen wurdne aktualisiert', msg.data);
+          break;
+          case 'created':
+            if($rootScope.authenticated)
+              $rootScope.pop('success', 'Themeeinstellungen wurden erstellt', msg.data);
+          break;
+          case 'removedFrom':
+            if($rootScope.authenticated)
+              $rootScope.pop('success', 'Themeeinstellungen wurden entfernt', "");
+          break;
+          case 'destroyed':
+            if($rootScope.authenticated)
+              $rootScope.pop('success', 'Themeeinstellungen wurden gelöscht', "");
+          break;
+          case 'addedTo':
+            if($rootScope.authenticated)
+              $rootScope.pop('success', 'Themeeinstellungen wurden hinzugefügt', "");
+          break;
+        }
+      });
+      isSubscribed = true;
+    }
+  }
 
-jumplink.cms.service('userService', function ($rootScope, $sailsSocket, $log) {
+  return {
+    save: save
+    , updateOrCreateEach: updateOrCreateEach
+   ,  subscribe: subscribe
+  };
+});
+;jumplink.cms.service('UserService', function ($rootScope, $sailsSocket, $log) {
   var isSubscribed = false;
 
   var save = function(user, callback) {
@@ -89318,80 +93417,76 @@ jumplink.cms.service('userService', function ($rootScope, $sailsSocket, $log) {
     , remove: remove
   };
 });
+;jumplink.cms.service('VWHeritageService', function ($rootScope, $log, $sailsSocket) {
 
+  var resolveCatalogProductList = function(cb, next) {
+    var errors = [
+      "Error: On trying to resolve VWHeritage Catalog Products List",
+      "Warn: On trying to resolve VWHeritage Catalog Products List! Not found, Products are empty!"
+    ];
 
-jumplink.cms.service('themeService', function ($rootScope, $sailsSocket, $log, $async) {
-  var isSubscribed = false;
+    var url = '/vwheritage/catalog_product_list';
 
-  var save = function (themes, callback) {
-    updateOrCreateEach(themes, function (err, result) {
-      if(angular.isDefined(callback)) callback(err, result);
+    return $sailsSocket.get(url).then (function (resp) {
+      if(angular.isUndefined(resp) || angular.isUndefined(resp.data)) {
+        $log.warn(errors[1]);
+        return null;
+      }
+
+      if(next) resp.data = next(resp.data);
+
+      if(cb) {
+        cb(null, resp.data);
+      } else {
+        return resp.data;
+      }
+    }, function error (resp){
+      $log.error(errors[0], resp);
+      
+      if(angular.isUndefined(resp) || angular.isUndefined(resp.data)) {
+        $log.warn(errors[1]);
+        return null;
+      }
+
+      if(next) resp.data = next(resp.data);
+
+      if(cb) {
+        cb(null, resp.data);
+      } else {
+        return resp.data;
+      }
     });
-  }
-  
-  var updateOrCreateEach = function(themes, callback) {
-    $log.debug(themes);
-    // $sailsSocket.put('/Theme/updateOrCreateEach', themes).success(function(data, status, headers, config) {
-    //   $log.debug(data, status, headers, config);
-    //   if(angular.isDefined(callback)) callback(data, status, headers, config)
-    // });
-    var iterator = function (theme, cb) {
-      $sailsSocket.put('/Theme/updateOrCreate', theme).success(function(data, status, headers, config) {
-        $log.debug(data, status, headers, config);
-        // TODO set error
-        
-      });
-    }
-    $async.each(themes, iterator, callback)
-    $sailsSocket.put('/Theme/updateOrCreateEach', themes).success(function(data, status, headers, config) {
-      $log.debug(data, status, headers, config);
-      callback(data, status, headers, config)
-    });
-  }
-
-  // TODO
-  var subscribe = function () {
-    if(!isSubscribed) {
-      $sailsSocket.subscribe('theme', function(msg){
-        if($rootScope.authenticated)
-          $log.debug(msg);
-        switch(msg.verb) {
-          case 'updated':
-            if($rootScope.authenticated)
-              $rootScope.pop('success', 'Themeeinstellungen wurdne aktualisiert', msg.data);
-          break;
-          case 'created':
-            if($rootScope.authenticated)
-              $rootScope.pop('success', 'Themeeinstellungen wurden erstellt', msg.data);
-          break;
-          case 'removedFrom':
-            if($rootScope.authenticated)
-              $rootScope.pop('success', 'Themeeinstellungen wurden entfernt', "");
-          break;
-          case 'destroyed':
-            if($rootScope.authenticated)
-              $rootScope.pop('success', 'Themeeinstellungen wurden gelöscht', "");
-          break;
-          case 'addedTo':
-            if($rootScope.authenticated)
-              $rootScope.pop('success', 'Themeeinstellungen wurden hinzugefügt', "");
-          break;
-        }
-      });
-      isSubscribed = true;
-    }
-  }
+  };
 
   return {
-    save: save
-    , updateOrCreateEach: updateOrCreateEach
-   ,  subscribe: subscribe
+    resolveCatalogProductList: resolveCatalogProductList,
   };
+});;jumplink.cms.service('$async', function () {
+
+  // https://github.com/caolan/async/issues/374#issuecomment-27498818
+  async.objectMap = function ( obj, func, cb ) {
+    var i, arr = [], keys = Object.keys( obj );
+    for ( i = 0; i < keys.length; i += 1 ) {
+      var wrapper = {};
+      wrapper[keys[i]] = obj[keys[i]];
+      arr[i] = wrapper;
+    }
+    this.map( arr, func, function( err, data ) {
+      if ( err ) { return cb( err ); }
+      var res = {};
+      for ( i = 0; i < data.length; i += 1 ) {
+          res[keys[i]] = data[i];
+      }
+      return cb( err, res );
+    });
+  }
+
+  return async;
 });
 ;jumplink.cms.controller('AppController', function($rootScope, $scope, $state, $window, $timeout, Fullscreen, $sailsSocket, $location, $anchorScroll, $mdUtil, $log, $mdSidenav, $mdToast) {
 
   // fix scroll to top on route change
-/*  $scope.$on("$stateChangeSuccess", function () {
+  /*  $scope.$on("$stateChangeSuccess", function () {
     $anchorScroll();
   });*/
 
@@ -89414,7 +93509,7 @@ jumplink.cms.service('themeService', function ($rootScope, $sailsSocket, $log, $
   $scope.toggleRight = buildToggler('right');
 
   // WORKAROUND wait until image is loaded to fix bs-sidebar
-/*  angular.element($window).imagesLoaded(function() {
+  /*  angular.element($window).imagesLoaded(function() {
     angular.element($window).triggerHandler('resize');
   });*/
 
@@ -89593,23 +93688,12 @@ jumplink.cms.service('themeService', function ($rootScope, $sailsSocket, $log, $
     $state.go(to, params, options)
   }
 
-});
-
-jumplink.cms.controller('LayoutController', function($scope) {
-});
-
-jumplink.cms.controller('ToastController', function($scope, $mdToast, type, title, body) {
-  $scope.type = type;
-  $scope.title = title;
-  $scope.body = body;
-  $scope.closeToast = function() {
-    $mdToast.hide();
-  };
-});
-
-
-
-jumplink.cms.controller('LeftSidenavController', function($scope, $mdSidenav, $log) {
+});;jumplink.cms.controller('ErrorContentController', function($scope, $stateParams) {
+  console.log($stateParams);
+  $scope.error = $stateParams.error;
+});;jumplink.cms.controller('FooterController', function($scope) {
+});;jumplink.cms.controller('LayoutController', function($scope) {
+});;jumplink.cms.controller('LeftSidenavController', function($scope, $mdSidenav, $log) {
   $scope.close = function () {
     $mdSidenav('left').close()
       .then(function () {
@@ -89617,9 +93701,7 @@ jumplink.cms.controller('LeftSidenavController', function($scope, $mdSidenav, $l
       });
   };
 
-});
-
-jumplink.cms.controller('RightSidenavController', function($scope, $mdSidenav, $log) {
+});;jumplink.cms.controller('RightSidenavController', function($scope, $mdSidenav, $log) {
   $scope.close = function () {
     $mdSidenav('right').close()
       .then(function () {
@@ -89627,19 +93709,86 @@ jumplink.cms.controller('RightSidenavController', function($scope, $mdSidenav, $
       });
   };
 
-});
+});;jumplink.cms.controller('ShippingContentController', function($rootScope, $scope, $sailsSocket, $mdBottomSheet, $async, $log) {
 
-jumplink.cms.controller('FooterController', function($scope) {
+  $scope.search = "";
+  $scope.products = [];
 
-});
+  var loadImage  = function (product, cb) {
+    $log.debug(product);
+    $sailsSocket.get('/magento/catalog_product_attribute_media_list/'+product.product_id+"?id="+product.product_id+"&storeview=shop_de&site="+$rootScope.site, {storeview: "shop_de", id:product.id, site:$rootScope.site}).success(function(data, status, headers, config) {
+      if(data != null && typeof(data) !== "undefined") {
+        $log.debug (data);
+        // $scope.products = data;
+        product.images = data;
+        $log.debug (product);
+        cb(null, data);
+      } else {
+        $log.error ("Error");
+        cb("Error")
+      }
+    }).error(function (data, status, headers, config) {
+      $log.error(data, status, headers, config);
+      cb(data)
+    });
+  }
 
-jumplink.cms.controller('ErrorContentController', function($scope, $stateParams) {
-  console.log($stateParams);
-  $scope.error = $stateParams.error;
-});
+  var loadImages  = function (products, cb) {
+    $async.map(products, loadImage, function(err, results) {
+      if(err) $log.error ("Can't save image");
+      $log.debug (results);
+    });
+  }
 
+  var loadSkus = function (sku, cb) {
+    $log.debug(event, $scope.search);
+    if(event.keyIdentifier === "Enter") {
+      $sailsSocket.get('/magento/catalog_product_list/'+sku+"?storeview=shop_de&site="+$rootScope.site, {storeview: "shop_de", id:sku, site:$rootScope.site}).success(function(data, status, headers, config) {
+        if(data != null && typeof(data) !== "undefined") {
+          $log.debug (data);
+          $scope.products = data;
+          // loadImages($scope.products);
+        } else {
+          $log.error ("Can't save image");
+        }
+      }).error(function (data, status, headers, config) {
+        $log.error(data, status, headers, config);
+      });
+    }
+  }
 
-jumplink.cms.controller('ShippingProductController', function($rootScope, product, $scope, $mdBottomSheet, $sailsSocket, $log) {
+  $scope.checkInput = function (input) {
+    var inputString = input || $scope.search;
+    if(inputString.length >= 3) {
+      loadSkus(inputString);
+    } else {
+      $rootScope.pop("error", "Sie müssen mindestens 3 Zeichen eingeben.")
+    }
+    
+  }
+
+  $scope.checkInputEvent = function (event, search) {
+    $log.debug(event, search, $scope.search);
+    if(event && event.keyIdentifier === "Enter") {
+      $scope.checkInput(search);
+    }
+  }
+
+  $scope.showProduct = function (product, $event) {
+    $scope.product = product;
+    $mdBottomSheet.show({
+      templateUrl: 'shipping/bottom-sheet',
+      controller: 'ShippingProductController',
+      targetEvent: $event,
+      // scope: $scope,
+      locals: {product: $scope.product}
+    }).then(function(parameter) {
+      console.log(parameter);
+    }, function (error) {
+      console.log(error);
+    });
+  }
+});;jumplink.cms.controller('ShippingProductController', function($rootScope, product, $scope, $mdBottomSheet, $sailsSocket, $log) {
 
   $scope.product = product;
   // console.log($scope);
@@ -89764,87 +93913,16 @@ jumplink.cms.controller('ShippingProductController', function($rootScope, produc
     else $scope.product.is_in_stock = false;
   });
 
-});
-
-jumplink.cms.controller('ShippingContentController', function($rootScope, $scope, $sailsSocket, $mdBottomSheet, $async, $log) {
-
-  $scope.search = "";
-  $scope.products = [];
-
-  var loadImage  = function (product, cb) {
-    $log.debug(product);
-    $sailsSocket.get('/magento/catalog_product_attribute_media_list/'+product.product_id+"?id="+product.product_id+"&storeview=shop_de&site="+$rootScope.site, {storeview: "shop_de", id:product.id, site:$rootScope.site}).success(function(data, status, headers, config) {
-      if(data != null && typeof(data) !== "undefined") {
-        $log.debug (data);
-        // $scope.products = data;
-        product.images = data;
-        $log.debug (product);
-        cb(null, data);
-      } else {
-        $log.error ("Error");
-        cb("Error")
-      }
-    }).error(function (data, status, headers, config) {
-      $log.error(data, status, headers, config);
-      cb(data)
-    });
-  }
-
-  var loadImages  = function (products, cb) {
-    $async.map(products, loadImage, function(err, results) {
-      if(err) $log.error ("Can't save image");
-      $log.debug (results);
-    });
-  }
-
-  var loadSkus = function (sku, cb) {
-    $log.debug(event, $scope.search);
-    if(event.keyIdentifier === "Enter") {
-      $sailsSocket.get('/magento/catalog_product_list/'+sku+"?storeview=shop_de&site="+$rootScope.site, {storeview: "shop_de", id:sku, site:$rootScope.site}).success(function(data, status, headers, config) {
-        if(data != null && typeof(data) !== "undefined") {
-          $log.debug (data);
-          $scope.products = data;
-          // loadImages($scope.products);
-        } else {
-          $log.error ("Can't save image");
-        }
-      }).error(function (data, status, headers, config) {
-        $log.error(data, status, headers, config);
-      });
-    }
-  }
-
-  $scope.checkInput = function (input) {
-    var inputString = input || $scope.search;
-    if(inputString.length >= 3) {
-      loadSkus(inputString);
-    } else {
-      $rootScope.pop("error", "Sie müssen mindestens 3 Zeichen eingeben.")
-    }
-    
-  }
-
-  $scope.checkInputEvent = function (event) {
-    $log.debug(event, $scope.search);
-    if(event && event.keyIdentifier === "Enter") {
-      $scope.checkInput($scope.search);
-    }
-  }
-
-  $scope.showProduct = function (product, $event) {
-    $scope.product = product;
-    $mdBottomSheet.show({
-      templateUrl: 'shipping/bottom-sheet',
-      controller: 'ShippingProductController',
-      targetEvent: $event,
-      // scope: $scope,
-      locals: {product: $scope.product}
-    }).then(function(parameter) {
-      console.log(parameter);
-    }, function (error) {
-      console.log(error);
-    });
-  }
+});;jumplink.cms.controller('ToastController', function($scope, $mdToast, type, title, body) {
+  $scope.type = type;
+  $scope.title = title;
+  $scope.body = body;
+  $scope.closeToast = function() {
+    $mdToast.hide();
+  };
+});;jumplink.cms.controller('VWHeritageContentController', function($rootScope, $scope, $log, products) {
+  $scope.products = products;
+  $log.debug($scope.products);
 });;// jumplink.cms.directive('imageMenu', function($window, $dropdown) {
 //   return {
 //     restrict: 'A',

@@ -1,0 +1,21 @@
+md-toolbar
+  .md-toolbar-tools
+    md-button.md-icon-button(aria-label='Settings', ng-click='toggleLeft()', hide-gt-md='')
+      ng-md-icon(icon='menu', size="28", style='fill: white;')
+    h2
+      span Bugwelder Sails       
+    span(flex='')  
+md-content(layout="column", flex)
+  md-content(layout-padding)
+    //- md-input-container.md-no-float
+    md-input-container.md-icon-float
+      label Suche
+      md-button.md-icon-button(aria-label='Search', ng-click="checkInput();")
+        ng-md-icon(icon='search', size="28")
+      //- ng-md-icon(icon='search', size="28")
+      input(ng-keyup="checkInputEvent($event)", type="text", ng-model='search')
+  md-content(layout-padding, flex)
+    md-list
+      md-list-item.md-2-line(ng-repeat="sku in products.CODE | limitTo:10", ng-click="showProduct(product, $event)")
+        .md-list-item-text
+          h3 {{sku}}

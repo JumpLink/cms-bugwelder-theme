@@ -96,13 +96,10 @@ module.exports = function(grunt) {
     'assets/third-party/angularSails/dist/ngsails.io.js',
   
     'assets/js/app.js',
-    // 'assets/js/bootstrap.js',
     'assets/js/translations.js',
-    'assets/js/services.js',
-    'assets/js/controllers.js',
-    'assets/js/bootstrap/controllers.js',
-    'assets/js/bootstrap/directives.js',
-    'assets/js/directives/*'
+    'assets/js/services/*.js',
+    'assets/js/controllers/*.js',
+    'assets/js/directives/*.js'
   ];
 
   
