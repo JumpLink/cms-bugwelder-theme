@@ -183,6 +183,32 @@ jumplink.cms.config( function($stateProvider, $urlRouterProvider, $locationProvi
       }
     }
   })
+  .state('layout.vwheritage-product', {
+    url: '/vwheritage-product/:id'
+    , resolve: {
+      authenticated: authenticated,
+      product: function(VWHeritageService, $stateParams) {
+        return VWHeritageService.resolveCatalogProductInfo($stateParams.id);
+      }
+      , images: function(VWHeritageService, $stateParams) {
+        return VWHeritageService.resolveCatalogProductImages($stateParams.id);
+      }
+    }
+    , views: {
+      'content' : {
+        templateUrl: 'vwheritage/info'
+        , controller: 'VWHeritageProductInfoController'
+      }
+      , 'left-sidenav' : {
+        templateUrl: 'left-sidenav'
+        , controller: 'LeftSidenavController'
+      }
+      , 'right-sidenav' : {
+        templateUrl: 'right-sidenav'
+        , controller: 'RightSidenavController'
+      }
+    }
+  })
   .state('layout.error', {
     url: '/error'
     , views: {

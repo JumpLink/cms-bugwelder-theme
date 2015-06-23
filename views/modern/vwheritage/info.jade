@@ -1,0 +1,22 @@
+md-toolbar
+  .md-toolbar-tools
+    md-button.md-icon-button(aria-label='Settings', ng-click='toggleLeft()', hide-gt-md='')
+      ng-md-icon(icon='menu', size="28", style='fill: white;')
+    h2
+      span {{product.sku}}
+    span(flex='')  
+md-content(layout="column", flex)
+  md-content(layout-padding, flex)
+    md-list
+      md-list-item.md-2-line(ng-repeat="(key, value) in product")
+        .md-list-item-text.md-offset
+          h3 {{key}}
+          p(ng-if="isArray(value)")
+            span(ng-repeat="val in value")
+              | {{val}}, 
+          p(ng-if="!isArray(value)")
+            | {{value}}
+      md-list-item.md-2-line(ng-repeat="(key, image) in images")
+        .md-list-item-text.md-offset
+          h3 {{key}}
+          img(ng-src="{{image.LARGE.URL}}")
