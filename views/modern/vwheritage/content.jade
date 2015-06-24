@@ -16,6 +16,6 @@ md-content(layout="column", flex)
       input(ng-keyup="checkInputEvent($event)", type="text", ng-model='search')
   md-content(layout-padding, flex)
     md-list
-      md-list-item.md-2-line(ng-repeat="sku in products.CODE | filter:search | limitTo:10", ng-click="showProduct(products.ITEMID[$index], $event)")
+      md-list-item.md-2-line(ng-repeat="sku in products.CODE | filter:search | limitTo:10", ng-click="showProduct(sku, $event)")
         .md-list-item-text
-          h3() {{$index}}: {{products.ITEMID[$index]}} - {{sku}}
+          h3 {{sku}}

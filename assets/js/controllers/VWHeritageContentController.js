@@ -2,7 +2,9 @@ jumplink.cms.controller('VWHeritageContentController', function($rootScope, $sco
   $scope.products = products;
   $log.debug($scope.products);
 
-  $scope.showProduct = function (id, event) {
+  $scope.showProduct = function (sku, event) {
+    var index = $scope.products.CODE.indexOf(sku);
+    var id = $scope.products.ITEMID[index];
     $state.go('layout.vwheritage-product', {id:id});
   };
 });
