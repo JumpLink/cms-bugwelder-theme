@@ -1,6 +1,13 @@
-p
-  | Ein Fehler ist aufgetreten. Klicke 
-  a(href="/singin")  hier
-  |  um dich anzumelden.
-p
-  {{error}}
+.inputdemoBasicUsage(layout='column', ng-app='MyApp')
+  md-content(layout-padding='')
+    form(role='form', name='userForm')
+      div(layout='', layout-sm='column')
+        md-input-container(flex='')
+          label E-Mail
+          input(ng-model='user.email', ng-required='required', autofocus='autofocus')
+      div(layout='', layout-sm='column')
+        md-input-container(flex='')
+          label Passwort
+          input(ng-model='user.password', ng-required='required')
+      div(layout='', layout-sm='column')
+        md-button.md-raised.md-primary(ng-click='signin(user);$hide()') Anmelden

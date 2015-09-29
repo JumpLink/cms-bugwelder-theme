@@ -94,9 +94,11 @@ module.exports = function(grunt) {
     // 'assets/third-party/sails.io.js/sails.io.js',
     'assets/third-party/sails.io.js/dist/sails.io.js',
     'assets/third-party/angularSails/dist/ngsails.io.js',
+    'assets/third-party/jumplink-cms-angular/src/**/*.js',
   
     'assets/js/app.js',
     'assets/js/translations.js',
+    'assets/js/config/*.js',
     'assets/js/services/*.js',
     'assets/js/controllers/*.js',
     'assets/js/directives/*.js'
